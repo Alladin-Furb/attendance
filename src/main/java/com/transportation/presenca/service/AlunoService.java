@@ -45,7 +45,9 @@ public class AlunoService {
         aluno.setNomeCurso(dto.getNomeCurso());
         aluno.setFaculdade(dto.getFaculdade());
         aluno.setAtivo(true);
-        
+
+        alunoRepository.save(aluno);
+        aluno.setExternalId(aluno.getId());
         alunoRepository.save(aluno);
         return toDTO(aluno);
     }
@@ -54,7 +56,7 @@ public class AlunoService {
      * Obter aluno por ID
      */
     public AlunoDTO obterAluno(Long id) {
-        var aluno = alunoRepository.findById(id)
+        var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         return toDTO(aluno);
     }
@@ -93,7 +95,7 @@ public class AlunoService {
      */
     @Transactional
     public AlunoDTO atualizarAluno(Long id, AlunoDTO dto) {
-        var aluno = alunoRepository.findById(id)
+        var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         
         aluno.setNome(dto.getNome());
@@ -110,7 +112,7 @@ public class AlunoService {
      */
     @Transactional
     public void desativarAluno(Long id) {
-        var aluno = alunoRepository.findById(id)
+        var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         aluno.setAtivo(false);
         alunoRepository.save(aluno);
@@ -121,7 +123,7 @@ public class AlunoService {
      */
     private AlunoDTO toDTO(Aluno aluno) {
         return AlunoDTO.builder()
-                .id(aluno.getId())
+                .id(aluno.getExternalId() == null ? aluno.getId() : aluno.getExternalId())
                 .matricula(aluno.getMatricula())
                 .nome(aluno.getNome())
                 .email(aluno.getEmail())
@@ -134,5 +136,10 @@ public class AlunoService {
                 .criadoEm(aluno.getCriadoEm())
                 .atualizadoEm(aluno.getAtualizadoEm())
                 .build();
+    }
+
+    private java.util.Optional<Aluno> buscarPorProfileId(Long profileId) {
+        return alunoRepository.findByExternalId(profileId)
+                .or(() -> alunoRepository.findById(profileId));
     }
 }

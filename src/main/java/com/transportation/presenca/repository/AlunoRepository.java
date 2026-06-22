@@ -14,6 +14,8 @@ public interface AlunoRepository extends JpaRepository<Aluno, Long> {
     
     // Buscar aluno por matrícula
     Optional<Aluno> findByMatricula(String matricula);
+
+    Optional<Aluno> findByExternalId(Long externalId);
     
     // Buscar aluno por email
     Optional<Aluno> findByEmail(String email);

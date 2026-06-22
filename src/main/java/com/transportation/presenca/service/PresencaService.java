@@ -39,7 +39,7 @@ public class PresencaService {
 
     @Transactional
     public PresencaDTO registrarPresenca(RegistrarPresencaDTO dto) {
-        var aluno = alunoRepository.findById(dto.getAlunoId())
+        var aluno = buscarAlunoPorProfileId(dto.getAlunoId())
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(dto.getCursoId())
                 .orElseThrow(() -> new IllegalArgumentException("Curso nao encontrado"));
@@ -76,7 +76,7 @@ public class PresencaService {
 
     @Transactional
     public PresencaDTO confirmarPresenca(Long alunoId, Long cursoId, LocalDate data, StatusPresenca status) {
-        var aluno = alunoRepository.findById(alunoId)
+        var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
                 .orElseThrow(() -> new IllegalArgumentException("Curso nao encontrado"));
@@ -99,7 +99,7 @@ public class PresencaService {
 
     @Transactional
     public PresencaDTO registrarAusencia(Long alunoId, Long cursoId, LocalDate data, String motivo, boolean justificado) {
-        var aluno = alunoRepository.findById(alunoId)
+        var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
                 .orElseThrow(() -> new IllegalArgumentException("Curso nao encontrado"));
@@ -159,7 +159,7 @@ public class PresencaService {
     }
 
     public RelatorioPresencaDTO gerarRelatorio(Long alunoId, Long cursoId, LocalDate dataInicio, LocalDate dataFim) {
-        var aluno = alunoRepository.findById(alunoId)
+        var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
                 .orElseThrow(() -> new IllegalArgumentException("Curso nao encontrado"));
@@ -238,7 +238,7 @@ public class PresencaService {
     }
 
     private void preencherDadosAlunoCurso(Presenca presenca, Aluno aluno, Curso curso) {
-        presenca.setAlunoId(aluno.getId());
+        presenca.setAlunoId(aluno.getExternalId() == null ? aluno.getId() : aluno.getExternalId());
         presenca.setAlunoMatricula(aluno.getMatricula());
         presenca.setAlunoNome(aluno.getNome());
         presenca.setCursoId(curso.getId());
@@ -263,5 +263,10 @@ public class PresencaService {
         }
 
         return "CRITICO";
+    }
+
+    private java.util.Optional<Aluno> buscarAlunoPorProfileId(Long profileId) {
+        return alunoRepository.findByExternalId(profileId)
+                .or(() -> alunoRepository.findById(profileId));
     }
 }

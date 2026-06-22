@@ -16,27 +16,37 @@ public class AlunoEventConsumer {
 
     @RabbitListener(queues = RabbitMQConfig.ALUNO_CADASTRADO_QUEUE)
     public void consumirAlunoCadastrado(Aluno aluno) {
-        log.info("Aluno cadastrado recebido: {}", aluno.getNome());
-        alunoRepository.findByMatricula(aluno.getMatricula())
-            .ifPresentOrElse(
-                existente -> log.info("Aluno {} já existe, ignorando.", aluno.getMatricula()),
-                () -> alunoRepository.save(aluno)
-            );
+        log.info("Aluno cadastrado recebido: {} (profileId={})", aluno.getNome(), aluno.getId());
+        salvarOuAtualizar(aluno);
     }
 
     @RabbitListener(queues = RabbitMQConfig.ALUNO_ATUALIZADO_QUEUE)
     public void consumirAlunoAtualizado(Aluno aluno) {
-        log.info("Aluno atualizado recebido: {}", aluno.getNome());
-        alunoRepository.findByMatricula(aluno.getMatricula())
-            .ifPresentOrElse(
-                existente -> {
-                    existente.setNome(aluno.getNome());
-                    existente.setEmail(aluno.getEmail());
-                    existente.setTelefone(aluno.getTelefone());
-                    existente.setRotaTransporte(aluno.getRotaTransporte());
-                    alunoRepository.save(existente);
-                },
-                () -> alunoRepository.save(aluno)
-            );
+        log.info("Aluno atualizado recebido: {} (profileId={})", aluno.getNome(), aluno.getId());
+        salvarOuAtualizar(aluno);
+    }
+
+    private void salvarOuAtualizar(Aluno recebido) {
+        Long profileId = recebido.getId();
+        Aluno destino = alunoRepository.findByExternalId(profileId)
+                .or(() -> alunoRepository.findByMatricula(recebido.getMatricula()))
+                .or(() -> recebido.getEmail() == null
+                        ? java.util.Optional.empty()
+                        : alunoRepository.findByEmail(recebido.getEmail()))
+                .orElseGet(Aluno::new);
+
+        destino.setExternalId(profileId);
+        destino.setMatricula(recebido.getMatricula());
+        destino.setNome(recebido.getNome());
+        destino.setEmail(recebido.getEmail());
+        destino.setTelefone(recebido.getTelefone());
+        destino.setRotaTransporte(recebido.getRotaTransporte());
+        destino.setCursoId(recebido.getCursoId());
+        destino.setNomeCurso(recebido.getNomeCurso());
+        destino.setFaculdade(recebido.getFaculdade());
+        destino.setAtivo(true);
+
+        alunoRepository.save(destino);
+        log.info("Aluno sincronizado no Attendance: profileId={}", profileId);
     }
 }
