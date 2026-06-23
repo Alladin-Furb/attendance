@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { pool, testConnection, databaseConfig } = require('./src/config/database');
-const { authenticateCredentials, authenticateRequest, createToken, requireRole } = require('./src/auth/token-auth');
+const { authenticateCredentials, authenticateRequest, requireRole } = require('./src/auth/token-auth');
 const { BullyElection } = require('./src/election/bully-election');
 const { EventBus, ROUTING_KEYS } = require('./src/messaging/event-bus');
 
@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const CALENDAR_TABLE = 'calendario_2026';
 const DEFAULT_CONFIRMATION_RADIUS_METERS = 100;
+const ROUTE_GEN_URL = process.env.ROUTE_GEN_URL || 'http://localhost:5001/api/routes/generate';
 const eventBus = new EventBus();
 const bullyElection = new BullyElection();
 
@@ -168,6 +169,79 @@ function formatDateKey(date = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
+function getAuthenticatedStudentName(req) {
+    return req.user?.name || req.user?.sub || req.user?.username;
+}
+
+function postJson(url, payload, timeoutMs = Number(process.env.ROUTE_GEN_TIMEOUT_MS || 15000)) {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const client = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+        const body = JSON.stringify(payload);
+
+        const request = client.request(
+            parsedUrl,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
+                },
+                timeout: timeoutMs
+            },
+            (response) => {
+                let responseBody = '';
+
+                response.setEncoding('utf8');
+                response.on('data', (chunk) => {
+                    responseBody += chunk;
+                });
+                response.on('end', () => {
+                    let data = responseBody;
+                    try {
+                        data = responseBody ? JSON.parse(responseBody) : null;
+                    } catch {
+                        data = responseBody;
+                    }
+
+                    if (response.statusCode < 200 || response.statusCode >= 300) {
+                        const error = new Error(`route-gen respondeu com status ${response.statusCode}`);
+                        error.statusCode = response.statusCode;
+                        error.response = data;
+                        reject(error);
+                        return;
+                    }
+
+                    resolve(data);
+                });
+            }
+        );
+
+        request.on('timeout', () => {
+            request.destroy(new Error('Tempo limite excedido ao chamar route-gen'));
+        });
+        request.on('error', reject);
+        request.write(body);
+        request.end();
+    });
+}
+
+function normalizeRouteFromRouteGen(response) {
+    const route = response?.route || response?.Route || response?.data?.route || response?.data?.Route || [];
+    const totalDistance = response?.totalDistance || response?.TotalDistance || response?.data?.totalDistance || null;
+
+    return {
+        route: Array.isArray(route) ? route.map((point) => ({
+            id: point.id ?? point.Id,
+            name: point.name ?? point.Name,
+            latitude: Number(point.latitude ?? point.Latitude),
+            longitude: Number(point.longitude ?? point.Longitude)
+        })).filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)) : [],
+        totalDistance
+    };
+}
+
 function getDemoVanLocation() {
     const baseLatitude = Number(process.env.VAN_DEMO_LATITUDE || -26.9194);
     const baseLongitude = Number(process.env.VAN_DEMO_LONGITUDE || -49.0661);
@@ -308,19 +382,20 @@ app.get('/api/health', async (req, res) => {
 // ==================== AUTENTICACAO ====================
 
 // POST /api/auth/login
-// Body: { username, password }
-app.post('/api/auth/login', (req, res) => {
-    const { username, password } = req.body;
-    const user = authenticateCredentials(username, password);
+// Body: { email, password }
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const email = req.body.email || req.body.username;
+        const { password } = req.body;
+        const result = await authenticateCredentials(email, password);
 
-    if (!user) {
-        return res.status(401).json({ error: 'Credenciais invalidas' });
+        return res.json(result);
+    } catch (error) {
+        return res.status(error.statusCode || 401).json({
+            error: error.message || 'Credenciais invalidas',
+            details: error.response || null
+        });
     }
-
-    return res.json({
-        token: createToken(user),
-        user
-    });
 });
 
 // GET /api/auth/me
@@ -717,9 +792,10 @@ app.get('/api/v1/presencas/aluno/:alunoId/contar-faltas', async (req, res) => {
 
 // POST /api/presencas/confirmacao
 // Body: { nomeAluno, dataConfirmacao, tipoDeslocamento, latitude, longitude }
-app.post('/api/presencas/confirmacao', async (req, res) => {
+app.post('/api/presencas/confirmacao', authenticateRequest, async (req, res) => {
     try {
-        const { nomeAluno, dataConfirmacao, tipoDeslocamento, latitude, longitude } = req.body;
+        const { dataConfirmacao, tipoDeslocamento, latitude, longitude } = req.body;
+        const nomeAluno = String(req.body.nomeAluno || getAuthenticatedStudentName(req) || '').trim();
 
         if (!nomeAluno || !dataConfirmacao || !tipoDeslocamento || latitude === undefined || longitude === undefined) {
             return res.status(400).json({
@@ -830,6 +906,135 @@ app.get('/api/presencas/monitoramento', async (req, res) => {
     } catch (error) {
         console.error('Erro ao listar presencas para monitoramento:', error);
         return res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/presencas/confirmacao/hoje', authenticateRequest, async (req, res) => {
+    try {
+        const nomeAluno = String(req.body.nomeAluno || getAuthenticatedStudentName(req) || '').trim();
+        const data = formatDateKey();
+
+        const result = await pool.query(
+            `
+                UPDATE "Confirmacao_Presenca_Diaria"
+                SET
+                    "Confirmacao" = false,
+                    "AlunoConfirmouEfetivacao" = false,
+                    "DataHoraConfEfetiva" = NULL,
+                    "StatusPresenca" = 'AUSENTE',
+                    "MotivoFalta" = COALESCE("MotivoFalta", 'Presenca cancelada pelo aluno no dia atual')
+                WHERE ctid IN (
+                    SELECT ctid
+                    FROM "Confirmacao_Presenca_Diaria"
+                    WHERE "NomeAluno" = $1
+                    AND "DataCalendar" = $2
+                    AND "Confirmacao" = true
+                    ORDER BY "DataHoraPreConfirmacao" DESC NULLS LAST
+                    LIMIT 1
+                )
+                RETURNING
+                    "NomeAluno",
+                    "DataCalendar",
+                    "Confirmacao",
+                    "AlunoConfirmouEfetivacao",
+                    "DataHoraPreConfirmacao",
+                    "LocalEmbarque",
+                    "TipoDeslocamento"
+            `,
+            [nomeAluno, data]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Nenhuma presenca confirmada para cancelar hoje.' });
+        }
+
+        await publishPresenceRegisteredEvent({
+            nomeAluno: result.rows[0].NomeAluno,
+            dataCalendar: result.rows[0].DataCalendar,
+            status: 'AUSENTE'
+        });
+
+        return res.json({
+            message: 'Presenca do dia atual cancelada com sucesso.',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Erro ao cancelar confirmacao de presenca:', error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/routes/calcular', async (req, res) => {
+    try {
+        const data = req.body.data || req.query.data || formatDateKey();
+        const vehicle = req.body.vehicle || {
+            id: Number(process.env.ROUTE_GEN_VEHICLE_ID || 1),
+            capacity: Number(process.env.ROUTE_GEN_VEHICLE_CAPACITY || 50)
+        };
+
+        const result = await pool.query(
+            `
+                SELECT
+                    "Id",
+                    "NomeAluno",
+                    "LocalEmbarque",
+                    "TipoDeslocamento",
+                    "DataHoraPreConfirmacao"
+                FROM "Confirmacao_Presenca_Diaria"
+                WHERE "DataCalendar" = $1
+                AND "Confirmacao" = true
+                ORDER BY "DataHoraPreConfirmacao" ASC NULLS LAST
+            `,
+            [data]
+        );
+
+        const students = result.rows
+            .map((row) => {
+                const coordinates = parseCoordinatePair(row.LocalEmbarque);
+                if (!coordinates) {
+                    return null;
+                }
+
+                return {
+                    id: Number(row.Id),
+                    name: row.NomeAluno,
+                    latitude: coordinates.latitude,
+                    longitude: coordinates.longitude,
+                    tripType: row.TipoDeslocamento
+                };
+            })
+            .filter(Boolean);
+
+        const routeRequest = {
+            vehicle,
+            students,
+            date: data
+        };
+
+        if (students.length === 0) {
+            return res.status(422).json({
+                error: 'Nenhum aluno confirmado com coordenadas validas para calcular rota.',
+                request: routeRequest
+            });
+        }
+
+        const routeGenResponse = await postJson(ROUTE_GEN_URL, routeRequest);
+        const normalizedRoute = normalizeRouteFromRouteGen(routeGenResponse);
+
+        return res.json({
+            request: routeRequest,
+            routeGenUrl: ROUTE_GEN_URL,
+            routeGenResponse,
+            route: normalizedRoute.route,
+            totalDistance: normalizedRoute.totalDistance
+        });
+    } catch (error) {
+        console.error('Erro ao calcular rota no route-gen:', error);
+        return res.status(502).json({
+            error: error.message || 'Falha ao chamar route-gen.',
+            routeGenUrl: ROUTE_GEN_URL,
+            routeGenResponse: error.response || null
+        });
     }
 });
 

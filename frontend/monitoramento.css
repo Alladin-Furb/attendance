@@ -82,6 +82,11 @@ body {
     cursor: pointer;
 }
 
+.monitor-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
 .status-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -253,6 +258,20 @@ body {
     width: 24px;
     height: 24px;
     background: var(--warning-color);
+}
+
+.route-stop {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: #ffffff;
+    font-size: 0.78rem;
+    font-weight: 800;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
 @media (max-width: 900px) {

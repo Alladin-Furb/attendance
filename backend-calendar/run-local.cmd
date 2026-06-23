@@ -1,0 +1,9 @@
+@echo off
+set DB_USER=postgres
+set DB_PASSWORD=spirit
+set DB_NAME=Presenca_Transporte
+set DB_HOST=localhost
+set DB_PORT=5432
+set AUTH_SERVICE_URL=http://localhost:8081
+set AUTH_SERVICE_JWT_SECRET=dev-secret-change-me-dev-secret-change-me
+node calendar-server.js

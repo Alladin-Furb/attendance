@@ -1,6 +1,7 @@
 const API_BASE_URL = window.CONFIRMACAO_API_URL || 'http://localhost:3001';
 let mapInstance;
 let mapMarker;
+let currentUser = null;
 
 // Define a data atual no carregamento para agilizar a confirmação.
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,11 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
     dateInput.readOnly = true;
 
     initializeBoardingMap();
+    document.getElementById('loginForm').addEventListener('submit', login);
+    document.getElementById('cancelPresenceButton').addEventListener('click', cancelTodayPresence);
     document.getElementById('useCurrentLocation').addEventListener('click', useCurrentLocation);
     document.getElementById('searchAddressBtn').addEventListener('click', searchAddress);
     document.getElementById('addressSearch').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') searchAddress();
     });
+    loadSession();
 });
 
 function getTodayDate() {
@@ -23,6 +27,105 @@ function getTodayDate() {
     const day = String(today.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;
+}
+
+function getAuthToken() {
+    return window.localStorage.getItem('attendanceAuthToken');
+}
+
+function getStoredAuthUser() {
+    try {
+        return JSON.parse(window.localStorage.getItem('attendanceAuthUser') || 'null');
+    } catch {
+        return null;
+    }
+}
+
+function getAuthHeaders() {
+    const token = getAuthToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function setFormEnabled(enabled) {
+    document.querySelectorAll('#presenceForm input, #presenceForm select, #presenceForm button').forEach((field) => {
+        field.disabled = !enabled;
+    });
+    document.getElementById('studentName').readOnly = true;
+    document.getElementById('confirmationDate').readOnly = true;
+}
+
+function getUserDisplayName(user) {
+    return user?.name || user?.sub || user?.username || '';
+}
+
+function applyLoggedUser(user) {
+    currentUser = user;
+    const displayName = getUserDisplayName(user);
+
+    document.getElementById('studentName').value = displayName;
+    document.getElementById('loginSection').hidden = Boolean(displayName);
+    setFormEnabled(Boolean(displayName));
+}
+
+async function loadSession() {
+    setFormEnabled(false);
+
+    if (!getAuthToken()) {
+        applyLoggedUser(null);
+        showFeedback('Entre para confirmar sua presenca.', true);
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+            headers: getAuthHeaders()
+        });
+
+        if (!response.ok) {
+            throw new Error('Sessao expirada.');
+        }
+
+        const data = await response.json();
+        applyLoggedUser({
+            ...data.user,
+            ...getStoredAuthUser()
+        });
+        showFeedback('Sessao ativa.');
+    } catch (error) {
+        window.localStorage.removeItem('attendanceAuthToken');
+        window.localStorage.removeItem('attendanceAuthUser');
+        applyLoggedUser(null);
+        showFeedback(error.message || 'Entre novamente.', true);
+    }
+}
+
+async function login(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Falha ao entrar.');
+        }
+
+        window.localStorage.setItem('attendanceAuthToken', data.token);
+        window.localStorage.setItem('attendanceAuthUser', JSON.stringify(data.user));
+        applyLoggedUser(data.user);
+        showFeedback('Login realizado. Nome preenchido automaticamente.');
+    } catch (error) {
+        showFeedback(error.message || 'Erro ao entrar.', true);
+    }
 }
 
 function initializeBoardingMap() {
@@ -157,6 +260,11 @@ async function confirmPresence(event) {
     const longitude = document.getElementById('longitude').value;
     const boardingCoordinates = `${latitude},${longitude}`;
 
+    if (!getAuthToken()) {
+        showFeedback('Entre para confirmar sua presenca.', true);
+        return;
+    }
+
     if (!studentName || !confirmationDate || !tripType || !boardingLocation || !latitude || !longitude) {
         showFeedback('Preencha os campos e selecione a localizacao no mapa.', true);
         return;
@@ -166,7 +274,8 @@ async function confirmPresence(event) {
         const response = await fetch(`${API_BASE_URL}/api/presencas/confirmacao`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
             },
             body: JSON.stringify({
                 nomeAluno: studentName,
@@ -185,9 +294,40 @@ async function confirmPresence(event) {
         }
 
         showFeedback('Presença confirmada e salva com sucesso.');
+        document.getElementById('cancelPresenceButton').hidden = false;
         resetFormKeepingDate();
     } catch (error) {
         showFeedback(error.message || 'Erro ao confirmar presença.', true);
+    }
+}
+
+async function cancelTodayPresence() {
+    if (!getAuthToken()) {
+        showFeedback('Entre para cancelar sua presenca.', true);
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/presencas/confirmacao/hoje`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({
+                nomeAluno: getUserDisplayName(currentUser)
+            })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Falha ao cancelar presenca.');
+        }
+
+        document.getElementById('cancelPresenceButton').hidden = true;
+        showFeedback(data.message || 'Presenca cancelada com sucesso.');
+    } catch (error) {
+        showFeedback(error.message || 'Erro ao cancelar presenca.', true);
     }
 }
 
@@ -197,6 +337,7 @@ function resetFormKeepingDate() {
 
     form.reset();
     document.getElementById('confirmationDate').value = currentDate;
+    document.getElementById('studentName').value = getUserDisplayName(currentUser);
     document.getElementById('coordinatesPreview').textContent = 'Nenhuma coordenada selecionada';
 
     if (mapMarker) {
