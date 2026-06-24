@@ -19,7 +19,6 @@
             <div class="app-nav__brand">Sistema de Transporte</div>
             <ul class="app-nav__menu">
                 <li><a class="app-nav__link" href="index.html">Confirmacao</a></li>
-                <li><a class="app-nav__link" href="calendar.html">Calendario</a></li>
                 <li><a class="app-nav__link is-active" href="monitoramento.html">Monitoramento</a></li>
             </ul>
         </div>
@@ -64,6 +63,17 @@
                 <span>Rota</span>
                 <strong id="routeStatus">Nao calculada</strong>
             </article>
+        </section>
+
+        <section class="route-result" id="routeResult" hidden>
+            <div class="route-result__header">
+                <div>
+                    <h2>Resultado da rota</h2>
+                    <span id="routeResultMeta">Aguardando calculo</span>
+                </div>
+                <strong id="routeDistance">--</strong>
+            </div>
+            <ol id="routeStops" class="route-stops"></ol>
         </section>
 
         <section class="monitor-layout">

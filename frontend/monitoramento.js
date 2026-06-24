@@ -223,6 +223,7 @@ async function calculateRoute() {
         }
 
         renderRoute(routePoints);
+        renderRouteSummary(data, routePoints);
         setRouteStatus(`${routePoints.length} paradas`);
     } catch (error) {
         clearRoute();
@@ -275,7 +276,40 @@ function clearRoute() {
         trackingMap.removeLayer(routeLayer);
         routeLayer = null;
     }
+    clearRouteSummary();
     setRouteStatus('Nao calculada');
+}
+
+function renderRouteSummary(data, routePoints) {
+    const result = document.getElementById('routeResult');
+    const meta = document.getElementById('routeResultMeta');
+    const distance = document.getElementById('routeDistance');
+    const stops = document.getElementById('routeStops');
+    const sourceLabel = data.source === 'simulado-local' ? 'Simulacao local' : 'Route-gen';
+    const totalDistance = Number(data.totalDistance || data.summary?.totalDistanceMeters || 0);
+
+    result.hidden = false;
+    meta.textContent = `${sourceLabel} | ${data.summary?.students || Math.max(routePoints.length - 1, 0)} alunos | ${routePoints.length} pontos`;
+    distance.textContent = totalDistance > 0 ? formatDistance(totalDistance) : '--';
+    stops.innerHTML = routePoints.map((point, index) => `
+        <li>
+            <strong>${index + 1}. ${escapeHtml(point.name || `Ponto ${index + 1}`)}</strong>
+            <span>Lat ${Number(point.latitude).toFixed(5)}, Lng ${Number(point.longitude).toFixed(5)}</span>
+            <span>${index === 0 ? 'Inicio da rota' : 'Parada de embarque'}</span>
+        </li>
+    `).join('');
+}
+
+function clearRouteSummary() {
+    const result = document.getElementById('routeResult');
+    if (!result) {
+        return;
+    }
+
+    result.hidden = true;
+    document.getElementById('routeResultMeta').textContent = 'Aguardando calculo';
+    document.getElementById('routeDistance').textContent = '--';
+    document.getElementById('routeStops').innerHTML = '';
 }
 
 function updateSummary(students) {
