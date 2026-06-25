@@ -14,6 +14,23 @@ function getSecret() {
     return process.env.AUTH_SERVICE_JWT_SECRET || process.env.JWT_SECRET || null;
 }
 
+function signToken(payload) {
+    const secret = getSecret();
+
+    if (!secret) {
+        throw new Error('JWT_SECRET ou AUTH_SERVICE_JWT_SECRET deve estar configurado para login local');
+    }
+
+    const encodedHeader = base64UrlEncode({ alg: 'HS256', typ: 'JWT' });
+    const encodedPayload = base64UrlEncode(payload);
+    const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${encodedHeader}.${encodedPayload}`)
+        .digest('base64url');
+
+    return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
 function safeEqual(left, right) {
     const leftBuffer = Buffer.from(left);
     const rightBuffer = Buffer.from(right);
@@ -116,6 +133,29 @@ function verifyToken(token) {
 }
 
 async function authenticateCredentials(email, password) {
+    if (process.env.LOCAL_AUTH_ENABLED === 'true') {
+        if (!email || !password) {
+            throw new Error('Email e senha sao obrigatorios');
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const user = {
+            sub: email,
+            email,
+            name: email.split('@')[0] || email,
+            role: 'ADMIN',
+            roles: ['ADMIN'],
+            profileId: Number(process.env.LOCAL_AUTH_PROFILE_ID || 1),
+            iat: now,
+            exp: now + 60 * 60 * 8
+        };
+
+        return {
+            token: signToken(user),
+            user: normalizeUserFromClaims(user, email)
+        };
+    }
+
     const response = await postJson(`${AUTH_SERVICE_URL}/api/auth/login`, { email, password });
     const token = response?.token;
 
