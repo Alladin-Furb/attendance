@@ -54,6 +54,21 @@ body {
     margin-bottom: 18px;
 }
 
+.login-section {
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 22px;
+    padding-bottom: 22px;
+}
+
+.login-section[hidden] {
+    display: none;
+}
+
+.login-form {
+    display: grid;
+    gap: 14px;
+}
+
 #presenceForm {
     display: grid;
     gap: 14px;
@@ -222,6 +237,31 @@ body {
 .btn-confirm:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 20px rgba(15, 157, 88, 0.25);
+}
+
+.btn-cancel {
+    border: 1px solid #c0392b;
+    border-radius: 8px;
+    padding: 12px;
+    color: #c0392b;
+    background: #fff5f3;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-cancel:hover {
+    background: #ffe8e4;
+}
+
+.btn-confirm:disabled,
+.btn-cancel:disabled,
+.btn-map:disabled,
+.btn-search:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+    box-shadow: none;
 }
 
 .feedback-message {

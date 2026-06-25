@@ -8,6 +8,7 @@ let latestVanLocation = null;
 let studentMarkers = new Map();
 let refreshTimer = null;
 let hasFittedMap = false;
+let routeLayer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     const dateInput = document.getElementById('monitorDate');
@@ -15,9 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initializeTrackingMap();
     document.getElementById('refreshButton').addEventListener('click', refreshMonitoringData);
+    document.getElementById('calculateRouteButton').addEventListener('click', calculateRoute);
     dateInput.addEventListener('change', () => {
         hasFittedMap = false;
         selectedStudent = null;
+        clearRoute();
         refreshMonitoringData();
     });
 
@@ -193,6 +196,122 @@ function renderVan(vanLocation) {
     document.getElementById('vanStatus').textContent = vanLocation.idVan || 'Online';
 }
 
+async function calculateRoute() {
+    const button = document.getElementById('calculateRouteButton');
+    button.disabled = true;
+    setRouteStatus('Calculando...');
+
+    try {
+        const response = await fetch(`${TRACKING_API_URL}/api/routes/calcular`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                data: getSelectedDate()
+            })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Nao foi possivel calcular a rota.');
+        }
+
+        const routePoints = normalizeRoutePoints(data.route);
+        if (routePoints.length < 2) {
+            throw new Error('route-gen retornou rota sem pontos suficientes para desenhar no mapa.');
+        }
+
+        renderRoute(routePoints);
+        renderRouteSummary(data, routePoints);
+        setRouteStatus(`${routePoints.length} paradas`);
+    } catch (error) {
+        clearRoute();
+        setRouteStatus('Falha');
+        document.getElementById('selectedStudent').textContent = error.message || 'Erro ao calcular rota.';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function normalizeRoutePoints(route) {
+    if (!Array.isArray(route)) {
+        return [];
+    }
+
+    return route
+        .map((point) => ({
+            id: point.id ?? point.Id,
+            name: point.name ?? point.Name,
+            latitude: Number(point.latitude ?? point.Latitude),
+            longitude: Number(point.longitude ?? point.Longitude)
+        }))
+        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+}
+
+function renderRoute(routePoints) {
+    clearRoute();
+
+    const latLngs = routePoints.map((point) => [point.latitude, point.longitude]);
+    const routeLine = L.polyline(latLngs, {
+        color: '#1f3c5d',
+        weight: 5,
+        opacity: 0.86
+    });
+
+    const stopMarkers = routePoints.map((point, index) =>
+        L.marker([point.latitude, point.longitude], {
+            icon: createRouteStopIcon(index + 1)
+        })
+            .bindPopup(`<strong>Parada ${index + 1}</strong><br>${escapeHtml(point.name || '')}`)
+    );
+
+    routeLayer = L.layerGroup([routeLine, ...stopMarkers]).addTo(trackingMap);
+
+    trackingMap.fitBounds(routeLine.getBounds(), { padding: [50, 50], maxZoom: 15 });
+}
+
+function clearRoute() {
+    if (routeLayer) {
+        trackingMap.removeLayer(routeLayer);
+        routeLayer = null;
+    }
+    clearRouteSummary();
+    setRouteStatus('Nao calculada');
+}
+
+function renderRouteSummary(data, routePoints) {
+    const result = document.getElementById('routeResult');
+    const meta = document.getElementById('routeResultMeta');
+    const distance = document.getElementById('routeDistance');
+    const stops = document.getElementById('routeStops');
+    const sourceLabel = data.source === 'simulado-local' ? 'Simulacao local' : 'Route-gen';
+    const totalDistance = Number(data.totalDistance || data.summary?.totalDistanceMeters || 0);
+
+    result.hidden = false;
+    meta.textContent = `${sourceLabel} | ${data.summary?.students || Math.max(routePoints.length - 1, 0)} alunos | ${routePoints.length} pontos`;
+    distance.textContent = totalDistance > 0 ? formatDistance(totalDistance) : '--';
+    stops.innerHTML = routePoints.map((point, index) => `
+        <li>
+            <strong>${index + 1}. ${escapeHtml(point.name || `Ponto ${index + 1}`)}</strong>
+            <span>Lat ${Number(point.latitude).toFixed(5)}, Lng ${Number(point.longitude).toFixed(5)}</span>
+            <span>${index === 0 ? 'Inicio da rota' : 'Parada de embarque'}</span>
+        </li>
+    `).join('');
+}
+
+function clearRouteSummary() {
+    const result = document.getElementById('routeResult');
+    if (!result) {
+        return;
+    }
+
+    result.hidden = true;
+    document.getElementById('routeResultMeta').textContent = 'Aguardando calculo';
+    document.getElementById('routeDistance').textContent = '--';
+    document.getElementById('routeStops').innerHTML = '';
+}
+
 function updateSummary(students) {
     document.getElementById('recordsCount').textContent = students.length;
     document.getElementById('mappedStudentsCount').textContent = students.filter(hasValidCoordinates).length;
@@ -277,6 +396,15 @@ function createMarkerIcon(type) {
     });
 }
 
+function createRouteStopIcon(order) {
+    return L.divIcon({
+        className: '',
+        html: `<div class="route-stop">${order}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+    });
+}
+
 function calculateDistanceMeters(origin, destination) {
     const earthRadiusMeters = 6371000;
     const toRadians = (degrees) => degrees * (Math.PI / 180);
@@ -337,6 +465,10 @@ function formatPresenceStatus(student) {
 
 function setSyncStatus(message) {
     document.getElementById('syncStatus').textContent = message;
+}
+
+function setRouteStatus(message) {
+    document.getElementById('routeStatus').textContent = message;
 }
 
 function escapeHtml(value) {

@@ -1,12 +1,6 @@
 const crypto = require('crypto');
 
-const DEFAULT_USERS = [
-    {
-        username: process.env.AUTH_DEFAULT_USER || 'admin',
-        password: process.env.AUTH_DEFAULT_PASSWORD || 'admin123',
-        roles: ['ADMIN']
-    }
-];
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8081';
 
 function base64UrlEncode(value) {
     return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -17,17 +11,24 @@ function base64UrlDecode(value) {
 }
 
 function getSecret() {
-    return process.env.AUTH_SECRET || 'people-transportation-dev-secret';
+    return process.env.AUTH_SERVICE_JWT_SECRET || process.env.JWT_SECRET || null;
 }
 
-function signPayload(header, payload) {
-    const unsignedToken = `${base64UrlEncode(header)}.${base64UrlEncode(payload)}`;
+function signToken(payload) {
+    const secret = getSecret();
+
+    if (!secret) {
+        throw new Error('JWT_SECRET ou AUTH_SERVICE_JWT_SECRET deve estar configurado para login local');
+    }
+
+    const encodedHeader = base64UrlEncode({ alg: 'HS256', typ: 'JWT' });
+    const encodedPayload = base64UrlEncode(payload);
     const signature = crypto
-        .createHmac('sha256', getSecret())
-        .update(unsignedToken)
+        .createHmac('sha256', secret)
+        .update(`${encodedHeader}.${encodedPayload}`)
         .digest('base64url');
 
-    return `${unsignedToken}.${signature}`;
+    return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
 
 function safeEqual(left, right) {
@@ -37,34 +38,62 @@ function safeEqual(left, right) {
     return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function parseUsers() {
-    if (!process.env.AUTH_USERS_JSON) {
-        return DEFAULT_USERS;
-    }
+function postJson(url, payload, headers = {}, timeoutMs = Number(process.env.AUTH_SERVICE_TIMEOUT_MS || 10000)) {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const client = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+        const body = JSON.stringify(payload);
 
-    try {
-        const users = JSON.parse(process.env.AUTH_USERS_JSON);
-        return Array.isArray(users) && users.length > 0 ? users : DEFAULT_USERS;
-    } catch (error) {
-        console.error('AUTH_USERS_JSON invalido. Usando usuario padrao de desenvolvimento.', error.message);
-        return DEFAULT_USERS;
-    }
+        const request = client.request(
+            parsedUrl,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Content-Length': Buffer.byteLength(body),
+                    ...headers
+                },
+                timeout: timeoutMs
+            },
+            (response) => {
+                let responseBody = '';
+
+                response.setEncoding('utf8');
+                response.on('data', (chunk) => {
+                    responseBody += chunk;
+                });
+                response.on('end', () => {
+                    let data = responseBody;
+                    try {
+                        data = responseBody ? JSON.parse(responseBody) : null;
+                    } catch {
+                        data = responseBody;
+                    }
+
+                    if (response.statusCode < 200 || response.statusCode >= 300) {
+                        const error = new Error(data?.message || data?.error || `auth-service respondeu com status ${response.statusCode}`);
+                        error.statusCode = response.statusCode;
+                        error.response = data;
+                        reject(error);
+                        return;
+                    }
+
+                    resolve(data);
+                });
+            }
+        );
+
+        request.on('timeout', () => {
+            request.destroy(new Error('Tempo limite excedido ao chamar auth-service'));
+        });
+        request.on('error', reject);
+        request.write(body);
+        request.end();
+    });
 }
 
-function createToken(user, expiresInSeconds = Number(process.env.AUTH_TOKEN_TTL_SECONDS || 3600)) {
-    const now = Math.floor(Date.now() / 1000);
-    const header = { alg: 'HS256', typ: 'JWT' };
-    const payload = {
-        sub: user.username,
-        roles: user.roles || [],
-        iat: now,
-        exp: now + expiresInSeconds
-    };
-
-    return signPayload(header, payload);
-}
-
-function verifyToken(token) {
+function parseToken(token) {
     if (!token || typeof token !== 'string') {
         throw new Error('Token ausente');
     }
@@ -75,16 +104,23 @@ function verifyToken(token) {
     }
 
     const [encodedHeader, encodedPayload, signature] = parts;
-    const expectedSignature = crypto
-        .createHmac('sha256', getSecret())
-        .update(`${encodedHeader}.${encodedPayload}`)
-        .digest('base64url');
+    const header = base64UrlDecode(encodedHeader);
+    const payload = base64UrlDecode(encodedPayload);
+    const secret = getSecret();
 
-    if (!safeEqual(signature, expectedSignature)) {
-        throw new Error('Assinatura do token invalida');
+    if (secret) {
+        const expectedSignature = crypto
+            .createHmac('sha256', secret)
+            .update(`${encodedHeader}.${encodedPayload}`)
+            .digest('base64url');
+
+        if (!safeEqual(signature, expectedSignature)) {
+            throw new Error('Assinatura do token invalida');
+        }
+    } else if (header.alg !== 'HS256') {
+        throw new Error('Algoritmo do token nao suportado');
     }
 
-    const payload = base64UrlDecode(encodedPayload);
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
         throw new Error('Token expirado');
     }
@@ -92,16 +128,62 @@ function verifyToken(token) {
     return payload;
 }
 
-function authenticateCredentials(username, password) {
-    const user = parseUsers().find((candidate) => candidate.username === username);
+function verifyToken(token) {
+    return normalizeUserFromClaims(parseToken(token));
+}
 
-    if (!user || !safeEqual(String(user.password), String(password))) {
-        return null;
+async function authenticateCredentials(email, password) {
+    if (process.env.LOCAL_AUTH_ENABLED === 'true') {
+        if (!email || !password) {
+            throw new Error('Email e senha sao obrigatorios');
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const user = {
+            sub: email,
+            email,
+            name: email.split('@')[0] || email,
+            role: 'ADMIN',
+            roles: ['ADMIN'],
+            profileId: Number(process.env.LOCAL_AUTH_PROFILE_ID || 1),
+            iat: now,
+            exp: now + 60 * 60 * 8
+        };
+
+        return {
+            token: signToken(user),
+            user: normalizeUserFromClaims(user, email)
+        };
+    }
+
+    const response = await postJson(`${AUTH_SERVICE_URL}/api/auth/login`, { email, password });
+    const token = response?.token;
+
+    if (!token) {
+        throw new Error('auth-service nao retornou token');
     }
 
     return {
-        username: user.username,
-        roles: user.roles || []
+        token,
+        user: normalizeUserFromClaims(parseToken(token), email)
+    };
+}
+
+function normalizeUserFromClaims(claims, fallbackEmail = null) {
+    const role = claims.role || claims.authority || claims.roles;
+    const roles = Array.isArray(role) ? role : role ? [role] : [];
+    const email = claims.email || fallbackEmail || null;
+    const name = claims.name || claims.nome || claims.displayName || email || claims.sub;
+
+    return {
+        id: claims.sub,
+        sub: claims.sub,
+        username: email || claims.sub,
+        email,
+        name,
+        role: roles[0] || null,
+        roles,
+        profileId: claims.profileId || null
     };
 }
 
@@ -134,7 +216,6 @@ function requireRole(role) {
 module.exports = {
     authenticateCredentials,
     authenticateRequest,
-    createToken,
     requireRole,
     verifyToken
 };

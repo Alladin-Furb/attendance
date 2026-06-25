@@ -1,1 +1,8 @@
 /target
+.env
+.env.*
+!.env.example
+!.env.supabase.example
+backend-calendar/.env
+backend-calendar/.env.*
+!backend-calendar/.env.example

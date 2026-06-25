@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { pool, testConnection, databaseConfig } = require('./src/config/database');
-const { authenticateCredentials, authenticateRequest, createToken, requireRole } = require('./src/auth/token-auth');
+const { authenticateCredentials, authenticateRequest, requireRole } = require('./src/auth/token-auth');
 const { BullyElection } = require('./src/election/bully-election');
 const { EventBus, ROUTING_KEYS } = require('./src/messaging/event-bus');
 
@@ -10,6 +10,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const CALENDAR_TABLE = 'calendario_2026';
 const DEFAULT_CONFIRMATION_RADIUS_METERS = 100;
+const DEFAULT_EFFECTIVE_PRESENCE_SECONDS = Number(process.env.EFFECTIVE_PRESENCE_SECONDS || 30);
+const ROUTE_GEN_URL = process.env.ROUTE_GEN_URL || 'http://localhost:5001/api/routes/generate';
+const ROUTE_GEN_MODE = process.env.ROUTE_GEN_MODE || 'auto';
 const eventBus = new EventBus();
 const bullyElection = new BullyElection();
 
@@ -40,6 +43,25 @@ async function ensurePresenceTable() {
     await pool.query('ALTER TABLE "Confirmacao_Presenca_Diaria" ADD COLUMN IF NOT EXISTS "MotivoFalta" TEXT');
     await pool.query('ALTER TABLE "Confirmacao_Presenca_Diaria" ADD COLUMN IF NOT EXISTS "Justificativa" TEXT');
     await pool.query('ALTER TABLE "Confirmacao_Presenca_Diaria" ADD COLUMN IF NOT EXISTS "Justificado" BOOLEAN DEFAULT false');
+    await pool.query(`
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'Confirmacao_Presenca_Diaria'
+                AND column_name = 'DataHoraConfEfetiva'
+                AND data_type = 'time without time zone'
+            ) THEN
+                ALTER TABLE "Confirmacao_Presenca_Diaria"
+                ALTER COLUMN "DataHoraConfEfetiva" TYPE TIMESTAMP
+                USING CASE
+                    WHEN "DataHoraConfEfetiva" IS NULL THEN NULL
+                    ELSE CURRENT_DATE + "DataHoraConfEfetiva"
+                END;
+            END IF;
+        END $$;
+    `);
 }
 
 async function ensureIntegrationTables() {
@@ -166,6 +188,131 @@ function formatDateKey(date = new Date()) {
     const day = String(date.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;
+}
+
+function getAuthenticatedStudentName(req) {
+    return req.user?.name || req.user?.sub || req.user?.username;
+}
+
+function getAuthenticatedStudentId(req) {
+    const profileId = Number(req.user?.profileId || req.user?.id);
+    return Number.isFinite(profileId) ? profileId : null;
+}
+
+function postJson(url, payload, timeoutMs = Number(process.env.ROUTE_GEN_TIMEOUT_MS || 15000)) {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const client = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+        const body = JSON.stringify(payload);
+
+        const request = client.request(
+            parsedUrl,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
+                },
+                timeout: timeoutMs
+            },
+            (response) => {
+                let responseBody = '';
+
+                response.setEncoding('utf8');
+                response.on('data', (chunk) => {
+                    responseBody += chunk;
+                });
+                response.on('end', () => {
+                    let data = responseBody;
+                    try {
+                        data = responseBody ? JSON.parse(responseBody) : null;
+                    } catch {
+                        data = responseBody;
+                    }
+
+                    if (response.statusCode < 200 || response.statusCode >= 300) {
+                        const error = new Error(`route-gen respondeu com status ${response.statusCode}`);
+                        error.statusCode = response.statusCode;
+                        error.response = data;
+                        reject(error);
+                        return;
+                    }
+
+                    resolve(data);
+                });
+            }
+        );
+
+        request.on('timeout', () => {
+            request.destroy(new Error('Tempo limite excedido ao chamar route-gen'));
+        });
+        request.on('error', reject);
+        request.write(body);
+        request.end();
+    });
+}
+
+function normalizeRouteFromRouteGen(response) {
+    const route = response?.route || response?.Route || response?.data?.route || response?.data?.Route || [];
+    const totalDistance = response?.totalDistance || response?.TotalDistance || response?.data?.totalDistance || null;
+
+    return {
+        route: Array.isArray(route) ? route.map((point) => ({
+            id: point.id ?? point.Id,
+            name: point.name ?? point.Name,
+            latitude: Number(point.latitude ?? point.Latitude),
+            longitude: Number(point.longitude ?? point.Longitude)
+        })).filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)) : [],
+        totalDistance
+    };
+}
+
+function getRouteStartPoint() {
+    return {
+        id: 'GARAGEM',
+        name: process.env.ROUTE_SIM_START_NAME || 'Garagem / ponto inicial',
+        latitude: Number(process.env.ROUTE_SIM_START_LATITUDE || process.env.VAN_DEMO_LATITUDE || -26.9194),
+        longitude: Number(process.env.ROUTE_SIM_START_LONGITUDE || process.env.VAN_DEMO_LONGITUDE || -49.0661)
+    };
+}
+
+function calculateRouteDistance(route) {
+    return route.slice(1).reduce((total, point, index) => {
+        return total + calculateDistanceMeters(route[index], point);
+    }, 0);
+}
+
+function generateLocalRoute(routeRequest) {
+    const startPoint = getRouteStartPoint();
+    const pending = routeRequest.students.map((student) => ({ ...student }));
+    const route = [startPoint];
+    let currentPoint = startPoint;
+
+    while (pending.length > 0) {
+        let nearestIndex = 0;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+
+        pending.forEach((student, index) => {
+            const distance = calculateDistanceMeters(currentPoint, student);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = index;
+            }
+        });
+
+        const [nextPoint] = pending.splice(nearestIndex, 1);
+        route.push(nextPoint);
+        currentPoint = nextPoint;
+    }
+
+    return {
+        source: 'simulado-local',
+        algorithm: 'nearest-neighbor',
+        route,
+        totalDistance: Number(calculateRouteDistance(route).toFixed(2)),
+        message: 'Rota simulada localmente ate o route-gen oficial ficar disponivel.'
+    };
 }
 
 function getDemoVanLocation() {
@@ -308,19 +455,20 @@ app.get('/api/health', async (req, res) => {
 // ==================== AUTENTICACAO ====================
 
 // POST /api/auth/login
-// Body: { username, password }
-app.post('/api/auth/login', (req, res) => {
-    const { username, password } = req.body;
-    const user = authenticateCredentials(username, password);
+// Body: { email, password }
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const email = req.body.email || req.body.username;
+        const { password } = req.body;
+        const result = await authenticateCredentials(email, password);
 
-    if (!user) {
-        return res.status(401).json({ error: 'Credenciais invalidas' });
+        return res.json(result);
+    } catch (error) {
+        return res.status(error.statusCode || 401).json({
+            error: error.message || 'Credenciais invalidas',
+            details: error.response || null
+        });
     }
-
-    return res.json({
-        token: createToken(user),
-        user
-    });
 });
 
 // GET /api/auth/me
@@ -717,9 +865,10 @@ app.get('/api/v1/presencas/aluno/:alunoId/contar-faltas', async (req, res) => {
 
 // POST /api/presencas/confirmacao
 // Body: { nomeAluno, dataConfirmacao, tipoDeslocamento, latitude, longitude }
-app.post('/api/presencas/confirmacao', async (req, res) => {
+app.post('/api/presencas/confirmacao', authenticateRequest, async (req, res) => {
     try {
-        const { nomeAluno, dataConfirmacao, tipoDeslocamento, latitude, longitude } = req.body;
+        const { dataConfirmacao, tipoDeslocamento, latitude, longitude } = req.body;
+        const nomeAluno = String(req.body.nomeAluno || getAuthenticatedStudentName(req) || '').trim();
 
         if (!nomeAluno || !dataConfirmacao || !tipoDeslocamento || latitude === undefined || longitude === undefined) {
             return res.status(400).json({
@@ -746,10 +895,12 @@ app.post('/api/presencas/confirmacao', async (req, res) => {
         const result = await pool.query(
             `
                 INSERT INTO "Confirmacao_Presenca_Diaria"
-                ("NomeAluno", "EmpresaTransporte", "DataCalendar", "Confirmacao", "DataHoraPreConfirmacao", "LocalEmbarque", "TipoDeslocamento")
-                VALUES ($1, $2, $3, true, NOW(), $4, $5)
+                ("NomeAluno", "AlunoId", "EmpresaTransporte", "DataCalendar", "Confirmacao", "DataHoraPreConfirmacao", "LocalEmbarque", "TipoDeslocamento")
+                VALUES ($1, $2, $3, $4, true, NOW(), $5, $6)
                 RETURNING
+                    "Id",
                     "NomeAluno",
+                    "AlunoId",
                     "EmpresaTransporte",
                     "DataCalendar",
                     "Confirmacao",
@@ -757,7 +908,7 @@ app.post('/api/presencas/confirmacao', async (req, res) => {
                     "LocalEmbarque",
                     "TipoDeslocamento"
             `,
-            [nomeAluno.trim(), '', dataConfirmacao, coordenadasEmbarque, tipoDeslocamento]
+            [nomeAluno.trim(), getAuthenticatedStudentId(req), '', dataConfirmacao, coordenadasEmbarque, tipoDeslocamento]
         );
 
         await publishPresenceRegisteredEvent({
@@ -833,14 +984,327 @@ app.get('/api/presencas/monitoramento', async (req, res) => {
     }
 });
 
+app.delete('/api/presencas/confirmacao/hoje', authenticateRequest, async (req, res) => {
+    try {
+        const nomeAluno = String(req.body.nomeAluno || getAuthenticatedStudentName(req) || '').trim();
+        const data = formatDateKey();
+
+        const result = await pool.query(
+            `
+                UPDATE "Confirmacao_Presenca_Diaria"
+                SET
+                    "Confirmacao" = false,
+                    "AlunoConfirmouEfetivacao" = false,
+                    "DataHoraConfEfetiva" = NULL,
+                    "StatusPresenca" = 'AUSENTE',
+                    "MotivoFalta" = COALESCE("MotivoFalta", 'Presenca cancelada pelo aluno no dia atual')
+                WHERE ctid IN (
+                    SELECT ctid
+                    FROM "Confirmacao_Presenca_Diaria"
+                    WHERE "NomeAluno" = $1
+                    AND "DataCalendar" = $2
+                    AND "Confirmacao" = true
+                    ORDER BY "DataHoraPreConfirmacao" DESC NULLS LAST
+                    LIMIT 1
+                )
+                RETURNING
+                    "NomeAluno",
+                    "DataCalendar",
+                    "Confirmacao",
+                    "AlunoConfirmouEfetivacao",
+                    "DataHoraPreConfirmacao",
+                    "LocalEmbarque",
+                    "TipoDeslocamento"
+            `,
+            [nomeAluno, data]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Nenhuma presenca confirmada para cancelar hoje.' });
+        }
+
+        await publishPresenceRegisteredEvent({
+            nomeAluno: result.rows[0].NomeAluno,
+            dataCalendar: result.rows[0].DataCalendar,
+            status: 'AUSENTE'
+        });
+
+        return res.json({
+            message: 'Presenca do dia atual cancelada com sucesso.',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Erro ao cancelar confirmacao de presenca:', error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/routes/calcular', async (req, res) => {
+    try {
+        const data = req.body.data || req.query.data || formatDateKey();
+        const vehicle = req.body.vehicle || {
+            id: Number(process.env.ROUTE_GEN_VEHICLE_ID || 1),
+            capacity: Number(process.env.ROUTE_GEN_VEHICLE_CAPACITY || 50)
+        };
+
+        const result = await pool.query(
+            `
+                SELECT
+                    "Id",
+                    "NomeAluno",
+                    "LocalEmbarque",
+                    "TipoDeslocamento",
+                    "DataHoraPreConfirmacao"
+                FROM "Confirmacao_Presenca_Diaria"
+                WHERE "DataCalendar" = $1
+                AND "Confirmacao" = true
+                ORDER BY "DataHoraPreConfirmacao" ASC NULLS LAST
+            `,
+            [data]
+        );
+
+        const students = result.rows
+            .map((row) => {
+                const coordinates = parseCoordinatePair(row.LocalEmbarque);
+                if (!coordinates) {
+                    return null;
+                }
+
+                return {
+                    id: Number(row.Id),
+                    name: row.NomeAluno,
+                    latitude: coordinates.latitude,
+                    longitude: coordinates.longitude,
+                    tripType: row.TipoDeslocamento
+                };
+            })
+            .filter(Boolean);
+
+        const routeRequest = {
+            vehicle,
+            students,
+            date: data
+        };
+
+        if (students.length === 0) {
+            return res.status(422).json({
+                error: 'Nenhum aluno confirmado com coordenadas validas para calcular rota.',
+                request: routeRequest
+            });
+        }
+
+        let routeGenResponse;
+        let normalizedRoute;
+        let source = 'route-gen';
+        let routeGenError = null;
+
+        if (ROUTE_GEN_MODE === 'mock') {
+            routeGenResponse = generateLocalRoute(routeRequest);
+            normalizedRoute = normalizeRouteFromRouteGen(routeGenResponse);
+            source = routeGenResponse.source;
+        } else {
+            try {
+                routeGenResponse = await postJson(ROUTE_GEN_URL, routeRequest);
+                normalizedRoute = normalizeRouteFromRouteGen(routeGenResponse);
+                if (normalizedRoute.route.length < 2) {
+                    throw new Error('route-gen retornou rota sem pontos suficientes');
+                }
+            } catch (error) {
+                if (ROUTE_GEN_MODE === 'real') {
+                    throw error;
+                }
+
+                routeGenError = {
+                    message: error.message,
+                    statusCode: error.statusCode || null,
+                    response: error.response || null
+                };
+                routeGenResponse = generateLocalRoute(routeRequest);
+                normalizedRoute = normalizeRouteFromRouteGen(routeGenResponse);
+                source = routeGenResponse.source;
+            }
+        }
+
+        return res.json({
+            request: routeRequest,
+            routeGenUrl: ROUTE_GEN_URL,
+            routeGenMode: ROUTE_GEN_MODE,
+            source,
+            routeGenError,
+            routeGenResponse,
+            route: normalizedRoute.route,
+            totalDistance: normalizedRoute.totalDistance,
+            summary: {
+                stops: normalizedRoute.route.length,
+                students: students.length,
+                totalDistanceMeters: normalizedRoute.totalDistance
+            }
+        });
+    } catch (error) {
+        console.error('Erro ao calcular rota no route-gen:', error);
+        return res.status(502).json({
+            error: error.message || 'Falha ao chamar route-gen.',
+            routeGenUrl: ROUTE_GEN_URL,
+            routeGenResponse: error.response || null
+        });
+    }
+});
+
 // GET /api/vans/localizacao/tempo-real
 app.get('/api/vans/localizacao/tempo-real', (req, res) => {
     res.json(getDemoVanLocation());
 });
 
 // POST /api/presencas/efetivacao
+// Body: { dataCalendar?, alunoLatitude?, alunoLongitude?, vanLatitude?, vanLongitude?, tempoPermanenciaSegundos?, tempoMinimoSegundos?, raioMetros? }
+app.post('/api/presencas/efetivacao', authenticateRequest, async (req, res) => {
+    try {
+        const nomeAluno = String(req.body.nomeAluno || getAuthenticatedStudentName(req) || '').trim();
+        const alunoId = getAuthenticatedStudentId(req);
+        const dataCalendar = req.body.dataCalendar || formatDateKey();
+        const { alunoLatitude, alunoLongitude, vanLatitude, vanLongitude, raioMetros } = req.body;
+
+        if (!nomeAluno || !dataCalendar) {
+            return res.status(400).json({ error: 'Campos obrigatorios: usuario autenticado e dataCalendar' });
+        }
+
+        const radiusMeters = raioMetros === undefined ? DEFAULT_CONFIRMATION_RADIUS_METERS : Number(raioMetros);
+        const minimumSeconds = req.body.tempoMinimoSegundos === undefined
+            ? DEFAULT_EFFECTIVE_PRESENCE_SECONDS
+            : Number(req.body.tempoMinimoSegundos);
+        const observedSeconds = req.body.tempoPermanenciaSegundos === undefined
+            ? 0
+            : Number(req.body.tempoPermanenciaSegundos);
+
+        if (Number.isNaN(radiusMeters) || radiusMeters <= 0) {
+            return res.status(400).json({ error: 'raioMetros deve ser um numero maior que zero.' });
+        }
+
+        if (Number.isNaN(minimumSeconds) || minimumSeconds < 0 || Number.isNaN(observedSeconds) || observedSeconds < 0) {
+            return res.status(400).json({ error: 'tempoMinimoSegundos e tempoPermanenciaSegundos devem ser numeros positivos.' });
+        }
+
+        const preConfirmationResult = await pool.query(
+            `
+                SELECT
+                    ctid,
+                    "AlunoId",
+                    "NomeAluno",
+                    "DataCalendar",
+                    "LocalEmbarque",
+                    "Confirmacao",
+                    "AlunoConfirmouEfetivacao",
+                    "DataHoraPreConfirmacao"
+                FROM "Confirmacao_Presenca_Diaria"
+                WHERE "DataCalendar" = $1
+                AND "Confirmacao" = true
+                AND (
+                    ($2::integer IS NOT NULL AND "AlunoId" = $2::integer)
+                    OR "NomeAluno" = $3
+                )
+                ORDER BY "DataHoraPreConfirmacao" DESC NULLS LAST
+                LIMIT 1
+            `,
+            [dataCalendar, alunoId, nomeAluno]
+        );
+
+        if (preConfirmationResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Pre-confirmacao de presenca nao encontrada para este aluno e data.' });
+        }
+
+        const preConfirmation = preConfirmationResult.rows[0];
+        const studentCoordinates = alunoLatitude !== undefined && alunoLongitude !== undefined
+            ? { latitude: Number(alunoLatitude), longitude: Number(alunoLongitude) }
+            : parseCoordinatePair(preConfirmation.LocalEmbarque);
+        const demoVan = getDemoVanLocation();
+        const vanCoordinates = {
+            latitude: vanLatitude === undefined ? Number(demoVan.latitude) : Number(vanLatitude),
+            longitude: vanLongitude === undefined ? Number(demoVan.longitude) : Number(vanLongitude)
+        };
+
+        if (
+            !studentCoordinates ||
+            Number.isNaN(studentCoordinates.latitude) ||
+            Number.isNaN(studentCoordinates.longitude) ||
+            studentCoordinates.latitude < -90 ||
+            studentCoordinates.latitude > 90 ||
+            studentCoordinates.longitude < -180 ||
+            studentCoordinates.longitude > 180
+        ) {
+            return res.status(422).json({ error: 'Coordenadas do aluno invalidas ou ausentes.' });
+        }
+
+        if (
+            Number.isNaN(vanCoordinates.latitude) ||
+            Number.isNaN(vanCoordinates.longitude) ||
+            vanCoordinates.latitude < -90 ||
+            vanCoordinates.latitude > 90 ||
+            vanCoordinates.longitude < -180 ||
+            vanCoordinates.longitude > 180
+        ) {
+            return res.status(400).json({ error: 'Coordenadas da van invalidas.' });
+        }
+
+        const distanceMeters = calculateDistanceMeters(studentCoordinates, vanCoordinates);
+        const isWithinRadius = distanceMeters <= radiusMeters;
+        const stayedLongEnough = observedSeconds >= minimumSeconds;
+        const efetivada = isWithinRadius && stayedLongEnough;
+        const motivo = efetivada
+            ? null
+            : `Efetivacao negada: distancia ${Number(distanceMeters.toFixed(2))}m em raio ${radiusMeters}m, permanencia ${observedSeconds}s de ${minimumSeconds}s.`;
+
+        const updateResult = await pool.query(
+            `
+                UPDATE "Confirmacao_Presenca_Diaria"
+                SET
+                    "AlunoConfirmouEfetivacao" = $2,
+                    "DataHoraConfEfetiva" = NOW(),
+                    "StatusPresenca" = $3,
+                    "MotivoFalta" = CASE WHEN $2 THEN NULL ELSE COALESCE("MotivoFalta", $4) END
+                WHERE ctid = $1
+                RETURNING
+                    "Id",
+                    "AlunoId",
+                    "NomeAluno",
+                    "DataCalendar",
+                    "Confirmacao",
+                    "AlunoConfirmouEfetivacao",
+                    "DataHoraPreConfirmacao",
+                    "DataHoraConfEfetiva",
+                    "LocalEmbarque",
+                    "TipoDeslocamento",
+                    "StatusPresenca",
+                    "MotivoFalta"
+            `,
+            [preConfirmation.ctid, efetivada, efetivada ? 'PRESENCA_EFETIVADA' : 'AUSENTE', motivo]
+        );
+
+        await publishPresenceRegisteredEvent({
+            nomeAluno: updateResult.rows[0].NomeAluno,
+            dataCalendar: updateResult.rows[0].DataCalendar,
+            status: efetivada ? 'PRESENCA_EFETIVADA' : 'AUSENTE'
+        });
+
+        return res.status(200).json({
+            efetivada,
+            message: efetivada ? 'Presenca efetivada com sucesso.' : 'Presenca nao efetivada.',
+            distanciaMetros: Number(distanceMeters.toFixed(2)),
+            raioMetros: radiusMeters,
+            tempoPermanenciaSegundos: observedSeconds,
+            tempoMinimoSegundos: minimumSeconds,
+            alunoNoRaio: isWithinRadius,
+            tempoSuficiente: stayedLongEnough,
+            data: updateResult.rows[0]
+        });
+    } catch (error) {
+        console.error('Erro ao efetivar confirmacao de presenca:', error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/presencas/efetivacao
 // Body: { nomeAluno, dataCalendar, vanLatitude, vanLongitude, raioMetros? }
-app.post('/api/presencas/efetivacao', async (req, res) => {
+app.post('/api/presencas/efetivacao-legado', authenticateRequest, async (req, res) => {
     try {
         const { nomeAluno, dataCalendar, vanLatitude, vanLongitude, raioMetros } = req.body;
 
