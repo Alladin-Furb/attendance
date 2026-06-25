@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -13,7 +14,7 @@ import java.time.LocalDateTime;
 @Builder
 public class DisciplinaDTO {
     
-    private Long id;
+    private UUID id;
     
     private String codigo;
     
@@ -21,7 +22,7 @@ public class DisciplinaDTO {
     
     private String descricao;
     
-    private Long professorId;
+    private UUID professorId;
     
     private String professorNome;
     

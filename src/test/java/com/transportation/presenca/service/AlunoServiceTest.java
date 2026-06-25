@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,22 +24,25 @@ public class AlunoServiceTest {
     
     @InjectMocks
     private AlunoService alunoService;
+
+    private static final UUID ALUNO_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ALUNO_INEXISTENTE_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
     
     @Test
     public void testObterAluno() {
         // Arrange
         Aluno aluno = new Aluno();
-        aluno.setId(1L);
+        aluno.setId(ALUNO_ID);
         aluno.setMatricula("2024001");
         aluno.setNome("João Silva");
         
-        when(alunoRepository.findById(1L)).thenReturn(Optional.of(aluno));
+        when(alunoRepository.findById(ALUNO_ID)).thenReturn(Optional.of(aluno));
         
         // Act
-        AlunoDTO dto = alunoService.obterAluno(1L);
+        AlunoDTO dto = alunoService.obterAluno(ALUNO_ID);
         
         // Assert
-        assertEquals(1L, dto.getId());
+        assertEquals(ALUNO_ID, dto.getId());
         assertEquals("2024001", dto.getMatricula());
         assertEquals("João Silva", dto.getNome());
     }
@@ -46,11 +50,11 @@ public class AlunoServiceTest {
     @Test
     public void testObterAlunoNotFound() {
         // Arrange
-        when(alunoRepository.findById(999L)).thenReturn(Optional.empty());
+        when(alunoRepository.findById(ALUNO_INEXISTENTE_ID)).thenReturn(Optional.empty());
         
         // Act & Assert
         assertThrows(IllegalArgumentException.class, () -> {
-            alunoService.obterAluno(999L);
+            alunoService.obterAluno(ALUNO_INEXISTENTE_ID);
         });
     }
 }

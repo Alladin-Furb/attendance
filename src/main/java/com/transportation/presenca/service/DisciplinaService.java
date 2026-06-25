@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,7 +45,7 @@ public class DisciplinaService {
     /**
      * Obter disciplina por ID
      */
-    public DisciplinaDTO obterDisciplina(Long id) {
+    public DisciplinaDTO obterDisciplina(UUID id) {
         var disciplina = disciplinaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Disciplina não encontrada"));
         return toDTO(disciplina);
@@ -82,7 +83,7 @@ public class DisciplinaService {
     /**
      * Listar disciplinas de um professor
      */
-    public List<DisciplinaDTO> listarDisciplinasProfessor(Long professorId) {
+    public List<DisciplinaDTO> listarDisciplinasProfessor(UUID professorId) {
         return disciplinaRepository.findByProfessorIdAndAtivaTrue(professorId)
                 .stream()
                 .map(this::toDTO)
@@ -93,7 +94,7 @@ public class DisciplinaService {
      * Atualizar disciplina
      */
     @Transactional
-    public DisciplinaDTO atualizarDisciplina(Long id, DisciplinaDTO dto) {
+    public DisciplinaDTO atualizarDisciplina(UUID id, DisciplinaDTO dto) {
         var disciplina = disciplinaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Disciplina não encontrada"));
         
@@ -112,7 +113,7 @@ public class DisciplinaService {
      * Desativar disciplina
      */
     @Transactional
-    public void desativarDisciplina(Long id) {
+    public void desativarDisciplina(UUID id) {
         var disciplina = disciplinaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Disciplina não encontrada"));
         disciplina.setAtiva(false);

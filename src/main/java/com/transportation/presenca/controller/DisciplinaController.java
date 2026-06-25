@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/disciplinas")
@@ -29,7 +30,7 @@ public class DisciplinaController {
      * Obter disciplina por ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<DisciplinaDTO> obterDisciplina(@PathVariable Long id) {
+    public ResponseEntity<DisciplinaDTO> obterDisciplina(@PathVariable UUID id) {
         DisciplinaDTO disciplina = disciplinaService.obterDisciplina(id);
         return ResponseEntity.ok(disciplina);
     }
@@ -65,7 +66,7 @@ public class DisciplinaController {
      * Listar disciplinas de um professor
      */
     @GetMapping("/professor/{professorId}")
-    public ResponseEntity<List<DisciplinaDTO>> listarDisciplinasProfessor(@PathVariable Long professorId) {
+    public ResponseEntity<List<DisciplinaDTO>> listarDisciplinasProfessor(@PathVariable UUID professorId) {
         List<DisciplinaDTO> disciplinas = disciplinaService.listarDisciplinasProfessor(professorId);
         return ResponseEntity.ok(disciplinas);
     }
@@ -74,7 +75,7 @@ public class DisciplinaController {
      * Atualizar disciplina
      */
     @PutMapping("/{id}")
-    public ResponseEntity<DisciplinaDTO> atualizarDisciplina(@PathVariable Long id, @RequestBody DisciplinaDTO dto) {
+    public ResponseEntity<DisciplinaDTO> atualizarDisciplina(@PathVariable UUID id, @RequestBody DisciplinaDTO dto) {
         DisciplinaDTO disciplinaAtualizada = disciplinaService.atualizarDisciplina(id, dto);
         return ResponseEntity.ok(disciplinaAtualizada);
     }
@@ -83,7 +84,7 @@ public class DisciplinaController {
      * Desativar disciplina
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> desativarDisciplina(@PathVariable Long id) {
+    public ResponseEntity<Void> desativarDisciplina(@PathVariable UUID id) {
         disciplinaService.desativarDisciplina(id);
         return ResponseEntity.noContent().build();
     }

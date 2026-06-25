@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 !.env.supabase.example
-backend-calendar/.env
-backend-calendar/.env.*
-!backend-calendar/.env.example
+
+# Banco H2 local
+/data/
+*.db
+
+# Logs
+/logs/
+*.log

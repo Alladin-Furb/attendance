@@ -8,14 +8,15 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface AlunoRepository extends JpaRepository<Aluno, Long> {
+public interface AlunoRepository extends JpaRepository<Aluno, UUID> {
     
     // Buscar aluno por matrícula
     Optional<Aluno> findByMatricula(String matricula);
 
-    Optional<Aluno> findByExternalId(Long externalId);
+    Optional<Aluno> findByExternalId(UUID externalId);
     
     // Buscar aluno por email
     Optional<Aluno> findByEmail(String email);
@@ -25,10 +26,17 @@ public interface AlunoRepository extends JpaRepository<Aluno, Long> {
     
     // Listar alunos por rota de transporte
     List<Aluno> findByRotaTransporteAndAtivoTrue(String rotaTransporte);
+
+    // Busca por termo (nome, CPF ou matrícula) para autocomplete
+    @Query("SELECT a FROM Aluno a WHERE a.ativo = true AND (" +
+           "LOWER(a.nome) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "a.cpf LIKE CONCAT('%', :q, '%') OR " +
+           "a.matricula LIKE CONCAT('%', :q, '%')) ORDER BY a.nome")
+    List<Aluno> buscarPorTermo(@Param("q") String q);
     
     // Verificar se aluno existe e está ativo
     @Query("SELECT CASE WHEN COUNT(a) > 0 THEN true ELSE false END FROM Aluno a WHERE a.id = :id AND a.ativo = true")
-    Boolean isAtivoById(@Param("id") Long id);
+    Boolean isAtivoById(@Param("id") UUID id);
     
     // Contar alunos ativos por rota
     @Query("SELECT COUNT(a) FROM Aluno a WHERE a.rotaTransporte = :rota AND a.ativo = true")

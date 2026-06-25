@@ -8,9 +8,10 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface CursoRepository extends JpaRepository<Curso, Long> {
+public interface CursoRepository extends JpaRepository<Curso, UUID> {
     
     // Buscar curso por código
     Optional<Curso> findByCodigo(String codigo);
@@ -26,7 +27,7 @@ public interface CursoRepository extends JpaRepository<Curso, Long> {
     
     // Verificar se curso existe e está ativo
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Curso c WHERE c.id = :id AND c.ativo = true")
-    Boolean isAtivoById(@Param("id") Long id);
+    Boolean isAtivoById(@Param("id") UUID id);
     
     // Buscar curso por nome (parcial)
     @Query("SELECT c FROM Curso c WHERE LOWER(c.nome) LIKE LOWER(CONCAT('%', :nome, '%')) AND c.ativo = true")
