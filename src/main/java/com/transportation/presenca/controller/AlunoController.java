@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/alunos")
@@ -29,7 +30,7 @@ public class AlunoController {
      * Obter aluno por ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<AlunoDTO> obterAluno(@PathVariable Long id) {
+    public ResponseEntity<AlunoDTO> obterAluno(@PathVariable UUID id) {
         AlunoDTO aluno = alunoService.obterAluno(id);
         return ResponseEntity.ok(aluno);
     }
@@ -51,6 +52,14 @@ public class AlunoController {
         List<AlunoDTO> alunos = alunoService.listarAlunos();
         return ResponseEntity.ok(alunos);
     }
+
+    /**
+     * Buscar alunos por termo (nome, CPF ou matrícula) — autocomplete
+     */
+    @GetMapping("/buscar")
+    public ResponseEntity<List<AlunoDTO>> buscar(@RequestParam("q") String q) {
+        return ResponseEntity.ok(alunoService.buscar(q));
+    }
     
     /**
      * Listar alunos por rota de transporte
@@ -65,7 +74,7 @@ public class AlunoController {
      * Atualizar aluno
      */
     @PutMapping("/{id}")
-    public ResponseEntity<AlunoDTO> atualizarAluno(@PathVariable Long id, @RequestBody AlunoDTO dto) {
+    public ResponseEntity<AlunoDTO> atualizarAluno(@PathVariable UUID id, @RequestBody AlunoDTO dto) {
         AlunoDTO alunoAtualizado = alunoService.atualizarAluno(id, dto);
         return ResponseEntity.ok(alunoAtualizado);
     }
@@ -74,7 +83,7 @@ public class AlunoController {
      * Desativar aluno
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> desativarAluno(@PathVariable Long id) {
+    public ResponseEntity<Void> desativarAluno(@PathVariable UUID id) {
         alunoService.desativarAluno(id);
         return ResponseEntity.noContent().build();
     }

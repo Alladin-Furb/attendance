@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -22,12 +23,10 @@ import java.time.LocalDateTime;
 public class RegistrarPresencaDTO {
     
     @NotNull(message = "O aluno e obrigatorio")
-    @Positive(message = "O aluno deve ser maior que zero")
-    private Long alunoId;
+    private UUID alunoId;
     
     @NotNull(message = "O curso e obrigatorio")
-    @Positive(message = "O curso deve ser maior que zero")
-    private Long cursoId;
+    private UUID cursoId;
     
     @NotNull(message = "A data da presenca e obrigatoria")
     @PastOrPresent(message = "A data da presenca nao pode ser futura")
@@ -49,11 +48,9 @@ public class RegistrarPresencaDTO {
     @PositiveOrZero(message = "As horas comparecidas nao podem ser negativas")
     private Integer horasAulaComparecidas;
     
-    @Positive(message = "O total de horas-aula deve ser maior que zero")
     private Integer horasAulaTotal;
     
-    @Positive(message = "O professor deve ser maior que zero")
-    private Long professorId;
+    private UUID professorId;
 
     @JsonIgnore
     @AssertTrue(message = "A hora de saída deve ser posterior a hora de entrada")

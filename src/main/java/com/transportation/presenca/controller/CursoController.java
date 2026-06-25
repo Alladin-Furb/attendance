@@ -8,9 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/cursos")
+@RequestMapping("/api/v1/viagens")
 @RequiredArgsConstructor
 public class CursoController {
     
@@ -29,7 +30,7 @@ public class CursoController {
      * Obter curso por ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<CursoDTO> obterCurso(@PathVariable Long id) {
+    public ResponseEntity<CursoDTO> obterCurso(@PathVariable UUID id) {
         CursoDTO curso = cursoService.obterCurso(id);
         return ResponseEntity.ok(curso);
     }
@@ -94,7 +95,7 @@ public class CursoController {
      * Atualizar curso
      */
     @PutMapping("/{id}")
-    public ResponseEntity<CursoDTO> atualizarCurso(@PathVariable Long id, @RequestBody CursoDTO dto) {
+    public ResponseEntity<CursoDTO> atualizarCurso(@PathVariable UUID id, @RequestBody CursoDTO dto) {
         CursoDTO cursoAtualizado = cursoService.atualizarCurso(id, dto);
         return ResponseEntity.ok(cursoAtualizado);
     }
@@ -103,7 +104,7 @@ public class CursoController {
      * Desativar curso
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> desativarCurso(@PathVariable Long id) {
+    public ResponseEntity<Void> desativarCurso(@PathVariable UUID id) {
         cursoService.desativarCurso(id);
         return ResponseEntity.noContent().build();
     }

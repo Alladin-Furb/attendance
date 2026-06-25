@@ -1,5 +1,6 @@
 package com.transportation.presenca.controller;
 
+import com.transportation.presenca.dto.ConfirmacaoViagemDTO;
 import com.transportation.presenca.dto.PresencaDTO;
 import com.transportation.presenca.dto.RelatorioPresencaDTO;
 import com.transportation.presenca.dto.RegistrarPresencaDTO;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/presencas")
@@ -39,11 +41,11 @@ public class PresencaController {
      */
     @PostMapping("/aluno/{alunoId}/curso/{cursoId}/confirmar-hoje")
     public ResponseEntity<PresencaDTO> confirmarPresencaHoje(
-            @PathVariable Long alunoId,
-            @PathVariable Long cursoId,
+            @PathVariable UUID alunoId,
+            @PathVariable UUID cursoId,
             @RequestParam StatusPresenca status,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         PresencaDTO presenca = presencaService.confirmarPresencaHoje(alunoId, cursoId, status);
         return ResponseEntity.status(HttpStatus.CREATED).body(presenca);
@@ -54,12 +56,12 @@ public class PresencaController {
      */
     @PostMapping("/aluno/{alunoId}/curso/{cursoId}/confirmar")
     public ResponseEntity<PresencaDTO> confirmarPresenca(
-            @PathVariable Long alunoId,
-            @PathVariable Long cursoId,
+            @PathVariable UUID alunoId,
+            @PathVariable UUID cursoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
             @RequestParam StatusPresenca status,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         PresencaDTO presenca = presencaService.confirmarPresenca(alunoId, cursoId, data, status);
         return ResponseEntity.status(HttpStatus.CREATED).body(presenca);
@@ -70,13 +72,13 @@ public class PresencaController {
      */
     @PostMapping("/aluno/{alunoId}/curso/{cursoId}/ausencia")
     public ResponseEntity<PresencaDTO> registrarAusencia(
-            @PathVariable Long alunoId,
-            @PathVariable Long cursoId,
+            @PathVariable UUID alunoId,
+            @PathVariable UUID cursoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
             @RequestParam String motivo,
             @RequestParam(defaultValue = "false") boolean justificado,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         PresencaDTO presenca = presencaService.registrarAusencia(alunoId, cursoId, data, motivo, justificado);
         return ResponseEntity.status(HttpStatus.CREATED).body(presenca);
@@ -87,7 +89,7 @@ public class PresencaController {
      */
     @PutMapping("/{id}/justificar")
     public ResponseEntity<PresencaDTO> justificarAusencia(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @RequestParam String justificativa,
             @RequestHeader("X-User-Role") String role) {
         validarAdmin(role);
@@ -100,7 +102,7 @@ public class PresencaController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<PresencaDTO> obterPresenca(
-            @PathVariable Long id,
+            @PathVariable UUID id,
             @RequestHeader("X-User-Role") String role) {
         validarAdmin(role);
         PresencaDTO presenca = presencaService.obterPresenca(id);
@@ -112,11 +114,11 @@ public class PresencaController {
      */
     @GetMapping("/aluno/{alunoId}/curso/{cursoId}")
     public ResponseEntity<PresencaDTO> obterPresencaPorData(
-            @PathVariable Long alunoId,
-            @PathVariable Long cursoId,
+            @PathVariable UUID alunoId,
+            @PathVariable UUID cursoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         PresencaDTO presenca = presencaService.obterPresencaPorData(alunoId, cursoId, data);
         return ResponseEntity.ok(presenca);
@@ -127,11 +129,11 @@ public class PresencaController {
      */
     @GetMapping("/aluno/{alunoId}/periodo")
     public ResponseEntity<List<PresencaDTO>> listarPresencasAluno(
-            @PathVariable Long alunoId,
+            @PathVariable UUID alunoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         List<PresencaDTO> presenças = presencaService.listarPresencasAluno(alunoId, dataInicio, dataFim);
         return ResponseEntity.ok(presenças);
@@ -142,7 +144,7 @@ public class PresencaController {
      */
     @GetMapping("/curso/{cursoId}/periodo")
     public ResponseEntity<List<PresencaDTO>> listarPresencasCurso(
-            @PathVariable Long cursoId,
+            @PathVariable UUID cursoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestHeader("X-User-Role") String role) {
@@ -150,14 +152,28 @@ public class PresencaController {
         List<PresencaDTO> presenças = presencaService.listarPresencasCurso(cursoId, dataInicio, dataFim);
         return ResponseEntity.ok(presenças);
     }
+
+    /**
+     * Listar alunos que confirmaram a viagem numa data (consumido pelo route-gen
+     * para montar a rota do dia). Disponível para admin e motorista.
+     */
+    @GetMapping("/confirmados")
+    public ResponseEntity<List<ConfirmacaoViagemDTO>> listarConfirmados(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
+            @RequestParam(required = false) UUID cursoId,
+            @RequestHeader("X-User-Role") String role) {
+        validarAdminOuMotorista(role);
+        List<ConfirmacaoViagemDTO> confirmados = presencaService.listarConfirmados(data, cursoId);
+        return ResponseEntity.ok(confirmados);
+    }
     
     /**
      * Gerar relatório de presença
      */
     @GetMapping("/relatorio/aluno/{alunoId}/curso/{cursoId}")
     public ResponseEntity<RelatorioPresencaDTO> gerarRelatorio(
-            @PathVariable Long alunoId,
-            @PathVariable Long cursoId,
+            @PathVariable UUID alunoId,
+            @PathVariable UUID cursoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestHeader("X-User-Role") String role) {
@@ -171,9 +187,9 @@ public class PresencaController {
      */
     @GetMapping("/aluno/{alunoId}/faltas-nao-justificadas")
     public ResponseEntity<List<PresencaDTO>> listarFaltasNaoJustificadas(
-            @PathVariable Long alunoId,
+            @PathVariable UUID alunoId,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         List<PresencaDTO> faltas = presencaService.listarFaltasNaoJustificadas(alunoId);
         return ResponseEntity.ok(faltas);
@@ -184,17 +200,17 @@ public class PresencaController {
      */
     @GetMapping("/aluno/{alunoId}/contar-faltas")
     public ResponseEntity<Integer> contarFaltasNaoJustificadas(
-            @PathVariable Long alunoId,
+            @PathVariable UUID alunoId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestHeader("X-User-Role") String role,
-            @RequestHeader(value = "X-Profile-Id", required = false) Long profileId) {
+            @RequestHeader(value = "X-Profile-Id", required = false) UUID profileId) {
         validarPropriedade(alunoId, role, profileId);
         Integer faltas = presencaService.contarFaltasNaoJustificadas(alunoId, dataInicio, dataFim);
         return ResponseEntity.ok(faltas);
     }
 
-    private void validarPropriedade(Long alunoId, String role, Long profileId) {
+    private void validarPropriedade(UUID alunoId, String role, UUID profileId) {
         if ("ROLE_ADMIN".equals(role)) {
             return;
         }
@@ -206,6 +222,12 @@ public class PresencaController {
     private void validarAdmin(String role) {
         if (!"ROLE_ADMIN".equals(role)) {
             throw new ForbiddenException("Operação restrita ao administrador.");
+        }
+    }
+
+    private void validarAdminOuMotorista(String role) {
+        if (!"ROLE_ADMIN".equals(role) && !"ROLE_MOTORISTA".equals(role)) {
+            throw new ForbiddenException("Operação restrita ao administrador ou motorista.");
         }
     }
 }

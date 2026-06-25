@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -55,7 +56,7 @@ public class AlunoService {
     /**
      * Obter aluno por ID
      */
-    public AlunoDTO obterAluno(Long id) {
+    public AlunoDTO obterAluno(UUID id) {
         var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         return toDTO(aluno);
@@ -87,14 +88,27 @@ public class AlunoService {
         return alunoRepository.findByRotaTransporteAndAtivoTrue(rota)
                 .stream()
                 .map(this::toDTO)
+                .collect(Collectors.toList());    }
+    
+    /**
+     * Buscar alunos por termo (nome, CPF ou matrícula) para autocomplete.
+     */
+    public List<AlunoDTO> buscar(String termo) {
+        if (termo == null || termo.isBlank()) {
+            return List.of();
+        }
+        return alunoRepository.buscarPorTermo(termo.trim())
+                .stream()
+                .limit(10)
+                .map(this::toDTO)
                 .collect(Collectors.toList());
     }
-    
+
     /**
      * Atualizar aluno
      */
     @Transactional
-    public AlunoDTO atualizarAluno(Long id, AlunoDTO dto) {
+    public AlunoDTO atualizarAluno(UUID id, AlunoDTO dto) {
         var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         
@@ -111,7 +125,7 @@ public class AlunoService {
      * Desativar aluno
      */
     @Transactional
-    public void desativarAluno(Long id) {
+    public void desativarAluno(UUID id) {
         var aluno = buscarPorProfileId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado"));
         aluno.setAtivo(false);
@@ -125,6 +139,7 @@ public class AlunoService {
         return AlunoDTO.builder()
                 .id(aluno.getExternalId() == null ? aluno.getId() : aluno.getExternalId())
                 .matricula(aluno.getMatricula())
+                .cpf(aluno.getCpf())
                 .nome(aluno.getNome())
                 .email(aluno.getEmail())
                 .telefone(aluno.getTelefone())
@@ -138,7 +153,7 @@ public class AlunoService {
                 .build();
     }
 
-    private java.util.Optional<Aluno> buscarPorProfileId(Long profileId) {
+    private java.util.Optional<Aluno> buscarPorProfileId(UUID profileId) {
         return alunoRepository.findByExternalId(profileId)
                 .or(() -> alunoRepository.findById(profileId));
     }

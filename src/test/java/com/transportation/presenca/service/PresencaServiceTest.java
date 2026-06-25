@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -31,6 +32,10 @@ public class PresencaServiceTest {
     
     @InjectMocks
     private PresencaService presencaService;
+
+    private static final UUID PRESENCA_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ALUNO_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID PRESENCA_INEXISTENTE_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
     
     @BeforeEach
     public void setUp() {
@@ -41,28 +46,28 @@ public class PresencaServiceTest {
     public void testObterPresenca() {
         // Arrange
         Presenca presenca = new Presenca();
-        presenca.setId(1L);
-        presenca.setAlunoId(1L); 
+        presenca.setId(PRESENCA_ID);
+        presenca.setAlunoId(ALUNO_ID); 
         presenca.setStatus(StatusPresenca.PRESENTE);
         
-        when(presencaRepository.findById(1L)).thenReturn(Optional.of(presenca));
+        when(presencaRepository.findById(PRESENCA_ID)).thenReturn(Optional.of(presenca));
         
         // Act
-        PresencaDTO dto = presencaService.obterPresenca(1L);
+        PresencaDTO dto = presencaService.obterPresenca(PRESENCA_ID);
         
         // Assert
-        assertEquals(1L, dto.getId());
+        assertEquals(PRESENCA_ID, dto.getId());
         assertEquals(StatusPresenca.PRESENTE, dto.getStatus());
     }
     
     @Test
     public void testObterPresencaNotFound() {
         // Arrange
-        when(presencaRepository.findById(999L)).thenReturn(Optional.empty());
+        when(presencaRepository.findById(PRESENCA_INEXISTENTE_ID)).thenReturn(Optional.empty());
         
         // Act & Assert
         assertThrows(IllegalArgumentException.class, () -> {
-            presencaService.obterPresenca(999L);
+            presencaService.obterPresenca(PRESENCA_INEXISTENTE_ID);
         });
     }
 }

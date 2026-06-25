@@ -5,19 +5,21 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class RelatorioPresencaDTO {
     
-    private Long alunoId;
+    private UUID alunoId;
     
     private String alunoMatricula;
     
     private String alunoNome;
     
-    private Long cursoId;
+    private UUID cursoId;
     
     private String cursoNome;
     

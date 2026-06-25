@@ -5,7 +5,10 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "cursos")
@@ -15,8 +18,8 @@ import java.time.LocalDateTime;
 public class Curso {
     
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
     
     @Column(name = "codigo", nullable = false, unique = true, length = 50)
     private String codigo;
@@ -33,8 +36,23 @@ public class Curso {
     @Column(name = "campus", length = 255)
     private String campus;
     
-    @Column(name = "carga_horaria", nullable = false)
-    private Integer cargaHoraria;
+    @Column(name = "endereco_destino", length = 500)
+    private String enderecoDestino;
+    
+    @Column(name = "cidade", length = 255)
+    private String cidade;
+    
+    @Column(name = "horario_partida")
+    private LocalTime horarioPartida;
+    
+    @Column(name = "horario_retorno")
+    private LocalTime horarioRetorno;
+    
+    @Column(name = "data_inicio")
+    private LocalDate dataInicio;
+    
+    @Column(name = "data_fim")
+    private LocalDate dataFim;
     
     @Column(name = "periodo", nullable = false, length = 50)
     private String periodo;

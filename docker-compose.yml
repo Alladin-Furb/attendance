@@ -3,15 +3,15 @@ services:
     image: postgres:17
     container_name: presenca-db
     environment:
-      POSTGRES_DB: presenca_db
-      POSTGRES_USER: presenca_user
-      POSTGRES_PASSWORD: presenca_pass
+      POSTGRES_DB: ${PRESENCA_DB_NAME:-presenca_db}
+      POSTGRES_USER: ${PRESENCA_DB_USER:-presenca_user}
+      POSTGRES_PASSWORD: ${PRESENCA_DB_PASSWORD:-presenca_pass}
     ports:
       - "5432:5432"
     volumes:
       - presenca-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "presenca_user", "-d", "presenca_db"]
+      test: ["CMD", "pg_isready", "-U", "${PRESENCA_DB_USER:-presenca_user}", "-d", "${PRESENCA_DB_NAME:-presenca_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,8 +23,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin123}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -38,13 +38,13 @@ services:
       - "8082:8082"
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://presenca-db:5432/presenca_db
-      SPRING_DATASOURCE_USERNAME: presenca_user
-      SPRING_DATASOURCE_PASSWORD: presenca_pass
+      SPRING_DATASOURCE_URL: jdbc:postgresql://presenca-db:5432/${PRESENCA_DB_NAME:-presenca_db}
+      SPRING_DATASOURCE_USERNAME: ${PRESENCA_DB_USER:-presenca_user}
+      SPRING_DATASOURCE_PASSWORD: ${PRESENCA_DB_PASSWORD:-presenca_pass}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: admin
-      RABBITMQ_PASSWORD: admin123
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-admin}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-admin123}
     depends_on:
       presenca-db:
         condition: service_healthy

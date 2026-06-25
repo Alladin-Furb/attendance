@@ -8,9 +8,10 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface DisciplinaRepository extends JpaRepository<Disciplina, Long> {
+public interface DisciplinaRepository extends JpaRepository<Disciplina, UUID> {
     
     // Buscar disciplina por código
     Optional<Disciplina> findByCodigo(String codigo);
@@ -19,11 +20,11 @@ public interface DisciplinaRepository extends JpaRepository<Disciplina, Long> {
     List<Disciplina> findByAtivaTrue();
     
     // Buscar disciplinas de um professor
-    List<Disciplina> findByProfessorIdAndAtivaTrue(Long professorId);
+    List<Disciplina> findByProfessorIdAndAtivaTrue(UUID professorId);
     
     // Verificar se disciplina existe e está ativa
     @Query("SELECT CASE WHEN COUNT(d) > 0 THEN true ELSE false END FROM Disciplina d WHERE d.id = :id AND d.ativa = true")
-    Boolean isAtivaById(@Param("id") Long id);
+    Boolean isAtivaById(@Param("id") UUID id);
     
     // Buscar disciplina por nome (parcial)
     @Query("SELECT d FROM Disciplina d WHERE LOWER(d.nome) LIKE LOWER(CONCAT('%', :nome, '%')) AND d.ativa = true")

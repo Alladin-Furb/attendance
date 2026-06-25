@@ -43,69 +43,18 @@ mvn spring-boot:run
 
 O perfil `prod` usa PostgreSQL e o Hibernate esta configurado com `ddl-auto=update`, entao as tabelas do servico de presenca devem ser criadas/atualizadas automaticamente.
 
-## 4. Configurar o backend-calendar
+## 4. Conferir se funcionou
 
-Crie `backend-calendar/.env` baseado em `backend-calendar/.env.example`:
-
-```env
-PORT=3001
-DATABASE_URL=postgresql://postgres:SUA_SENHA@db.xjrepdfpwokwsgfztwku.supabase.co:5432/postgres?sslmode=require
-```
-
-Depois teste:
-
-```powershell
-cd backend-calendar
-npm run db:test
-npm start
-```
-
-## 5. Criar tabelas auxiliares do calendario
-
-O `backend-calendar` cria algumas tabelas ao iniciar. Para criar tambem a tabela `calendario_2026`, rode o arquivo:
-
-```text
-database/schema.sql
-```
-
-Voce pode colar o conteudo no SQL Editor do Supabase e executar.
-
-## 6. Conferir se funcionou
-
-Spring Boot:
+Com o Spring Boot rodando, acesse:
 
 ```text
 http://localhost:8082
 ```
 
-Backend calendario:
-
-```text
-http://localhost:3001/api/health
-```
-
 Se aparecer erro de rede ou timeout, troque a conexao direta pelo **Session pooler** do Supabase.
 
-## 7. Rodar a interface usando Supabase
+## 5. Interface (frontend)
 
-Em um terminal, suba o backend da interface:
+A interface web nao faz parte deste repositorio. Ela vive no repositorio `frontend` (app React) e conversa com este servico de presenca atraves do **api-gateway** (`/api/v1/presencas`, `/api/v1/cursos`).
 
-```powershell
-cd backend-calendar
-.\run-supabase.ps1
-```
-
-Esse script habilita um login local apenas para teste da interface. Voce pode entrar com qualquer email/senha enquanto estiver rodando localmente.
-
-Em outro terminal, suba o frontend estatico:
-
-```powershell
-.\run-frontend.ps1
-```
-
-Acesse:
-
-```text
-http://localhost:3000/index.html
-http://localhost:3000/monitoramento.html
-```
+Para subir a stack completa localmente (gateway + servicos + frontend), use o `docker-compose.yml` da pasta `infra/`.

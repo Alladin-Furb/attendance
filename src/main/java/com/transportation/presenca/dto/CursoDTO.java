@@ -5,7 +5,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -13,7 +17,7 @@ import java.time.LocalDateTime;
 @Builder
 public class CursoDTO {
     
-    private Long id;
+    private UUID id;
     
     private String codigo;
     
@@ -25,7 +29,20 @@ public class CursoDTO {
     
     private String campus;
     
-    private Integer cargaHoraria;
+    private String enderecoDestino;
+    
+    private String cidade;
+    
+    private LocalTime horarioPartida;
+    
+    private LocalTime horarioRetorno;
+    
+    private LocalDate dataInicio;
+    
+    private LocalDate dataFim;
+    
+    // Dias úteis da viagem (exclui sábados e domingos), calculado na leitura.
+    private List<LocalDate> dias;
     
     private String periodo;
     

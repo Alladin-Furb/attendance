@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -27,7 +29,7 @@ public class AlunoEventConsumer {
     }
 
     private void salvarOuAtualizar(Aluno recebido) {
-        Long profileId = recebido.getId();
+        UUID profileId = recebido.getId();
         Aluno destino = alunoRepository.findByExternalId(profileId)
                 .or(() -> alunoRepository.findByMatricula(recebido.getMatricula()))
                 .or(() -> recebido.getEmail() == null
@@ -37,6 +39,7 @@ public class AlunoEventConsumer {
 
         destino.setExternalId(profileId);
         destino.setMatricula(recebido.getMatricula());
+        destino.setCpf(recebido.getCpf());
         destino.setNome(recebido.getNome());
         destino.setEmail(recebido.getEmail());
         destino.setTelefone(recebido.getTelefone());

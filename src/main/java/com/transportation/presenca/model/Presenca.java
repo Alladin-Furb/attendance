@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "presencas", indexes = {
@@ -20,11 +21,11 @@ import java.time.LocalDateTime;
 public class Presenca {
     
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
     
     @Column(name = "aluno_id", nullable = false)
-    private Long alunoId;
+    private UUID alunoId;
     
     @Column(name = "aluno_matricula", nullable = false)
     private String alunoMatricula;
@@ -33,7 +34,7 @@ public class Presenca {
     private String alunoNome;
     
     @Column(name = "curso_id", nullable = false)
-    private Long cursoId;
+    private UUID cursoId;
     
     @Column(name = "curso_nome", nullable = false)
     private String cursoNome;
@@ -73,7 +74,7 @@ public class Presenca {
     private Integer horasAulaTotal;
     
     @Column(name = "professor_id")
-    private Long professorId;
+    private UUID professorId;
     
     @Column(name = "professor_nome")
     private String professorNome;

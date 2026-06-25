@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -70,16 +71,23 @@ public class PresencaService {
     }
 
     @Transactional
-    public PresencaDTO confirmarPresencaHoje(Long alunoId, Long cursoId, StatusPresenca status) {
+    public PresencaDTO confirmarPresencaHoje(UUID alunoId, UUID cursoId, StatusPresenca status) {
         return confirmarPresenca(alunoId, cursoId, LocalDate.now(), status);
     }
 
     @Transactional
-    public PresencaDTO confirmarPresenca(Long alunoId, Long cursoId, LocalDate data, StatusPresenca status) {
+    public PresencaDTO confirmarPresenca(UUID alunoId, UUID cursoId, LocalDate data, StatusPresenca status) {
         var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
                 .orElseThrow(() -> new IllegalArgumentException("Curso nao encontrado"));
+
+        // Regra: a viagem só pode ser confirmada (reservada) até 7 dias antes do início.
+        if (status == StatusPresenca.PENDENTE && curso.getDataInicio() != null
+                && LocalDate.now().plusDays(7).isAfter(curso.getDataInicio())) {
+            throw new IllegalArgumentException(
+                    "Confirmação encerrada: a viagem deve ser confirmada até 7 dias antes do início.");
+        }
 
         var presenca = presencaRepository.findByAlunoIdAndCursoIdAndDataPresenca(alunoId, cursoId, data)
                 .orElse(new Presenca());
@@ -98,7 +106,7 @@ public class PresencaService {
     }
 
     @Transactional
-    public PresencaDTO registrarAusencia(Long alunoId, Long cursoId, LocalDate data, String motivo, boolean justificado) {
+    public PresencaDTO registrarAusencia(UUID alunoId, UUID cursoId, LocalDate data, String motivo, boolean justificado) {
         var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
@@ -119,7 +127,7 @@ public class PresencaService {
     }
 
     @Transactional
-    public PresencaDTO justificarAusencia(Long presencaId, String justificativa) {
+    public PresencaDTO justificarAusencia(UUID presencaId, String justificativa) {
         var presenca = presencaRepository.findById(presencaId)
                 .orElseThrow(() -> new IllegalArgumentException("Registro de presenca nao encontrado"));
 
@@ -132,33 +140,52 @@ public class PresencaService {
         return toDTO(presenca);
     }
 
-    public PresencaDTO obterPresenca(Long id) {
+    public PresencaDTO obterPresenca(UUID id) {
         var presenca = presencaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Registro de presenca nao encontrado"));
         return toDTO(presenca);
     }
 
-    public PresencaDTO obterPresencaPorData(Long alunoId, Long cursoId, LocalDate data) {
+    public PresencaDTO obterPresencaPorData(UUID alunoId, UUID cursoId, LocalDate data) {
         var presenca = presencaRepository.findByAlunoIdAndCursoIdAndDataPresenca(alunoId, cursoId, data)
                 .orElseThrow(() -> new IllegalArgumentException("Nenhum registro de presenca encontrado"));
         return toDTO(presenca);
     }
 
-    public List<PresencaDTO> listarPresencasAluno(Long alunoId, LocalDate dataInicio, LocalDate dataFim) {
+    public List<PresencaDTO> listarPresencasAluno(UUID alunoId, LocalDate dataInicio, LocalDate dataFim) {
         return presencaRepository.findByAlunoIdAndPeriodo(alunoId, dataInicio, dataFim)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
 
-    public List<PresencaDTO> listarPresencasCurso(Long cursoId, LocalDate dataInicio, LocalDate dataFim) {
+    public List<PresencaDTO> listarPresencasCurso(UUID cursoId, LocalDate dataInicio, LocalDate dataFim) {
         return presencaRepository.findByCursoIdAndPeriodo(cursoId, dataInicio, dataFim)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
 
-    public RelatorioPresencaDTO gerarRelatorio(Long alunoId, Long cursoId, LocalDate dataInicio, LocalDate dataFim) {
+    /**
+     * Lista os alunos que confirmaram a viagem em uma data (pendentes de embarque,
+     * já presentes ou atrasados). Consumido pelo route-gen para montar a rota.
+     */
+    public List<com.transportation.presenca.dto.ConfirmacaoViagemDTO> listarConfirmados(LocalDate data, UUID cursoId) {
+        var statuses = List.of(
+                StatusPresenca.PENDENTE,
+                StatusPresenca.PRESENTE,
+                StatusPresenca.ATRASADO);
+
+        var presencas = cursoId == null
+                ? presencaRepository.findConfirmados(data, statuses)
+                : presencaRepository.findConfirmadosByCurso(data, cursoId, statuses);
+
+        return presencas.stream()
+                .map(this::toConfirmacaoViagemDTO)
+                .collect(Collectors.toList());
+    }
+
+    public RelatorioPresencaDTO gerarRelatorio(UUID alunoId, UUID cursoId, LocalDate dataInicio, LocalDate dataFim) {
         var aluno = buscarAlunoPorProfileId(alunoId)
                 .orElseThrow(() -> new IllegalArgumentException("Aluno nao encontrado"));
         var curso = cursoRepository.findById(cursoId)
@@ -199,14 +226,14 @@ public class PresencaService {
                 .build();
     }
 
-    public List<PresencaDTO> listarFaltasNaoJustificadas(Long alunoId) {
+    public List<PresencaDTO> listarFaltasNaoJustificadas(UUID alunoId) {
         return presencaRepository.findFaltasNaoJustificadas(alunoId)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
 
-    public Integer contarFaltasNaoJustificadas(Long alunoId, LocalDate dataInicio, LocalDate dataFim) {
+    public Integer contarFaltasNaoJustificadas(UUID alunoId, LocalDate dataInicio, LocalDate dataFim) {
         return presencaRepository.countFaltasNaoJustificadas(alunoId, dataInicio, dataFim);
     }
 
@@ -237,13 +264,27 @@ public class PresencaService {
                 .build();
     }
 
+    private com.transportation.presenca.dto.ConfirmacaoViagemDTO toConfirmacaoViagemDTO(Presenca presenca) {
+        return com.transportation.presenca.dto.ConfirmacaoViagemDTO.builder()
+                .alunoId(presenca.getAlunoId())
+                .alunoMatricula(presenca.getAlunoMatricula())
+                .alunoNome(presenca.getAlunoNome())
+                .cursoId(presenca.getCursoId())
+                .cursoNome(presenca.getCursoNome())
+                .status(presenca.getStatus())
+                .dataPresenca(presenca.getDataPresenca())
+                .build();
+    }
+
     private void preencherDadosAlunoCurso(Presenca presenca, Aluno aluno, Curso curso) {
         presenca.setAlunoId(aluno.getExternalId() == null ? aluno.getId() : aluno.getExternalId());
         presenca.setAlunoMatricula(aluno.getMatricula());
         presenca.setAlunoNome(aluno.getNome());
         presenca.setCursoId(curso.getId());
         presenca.setCursoNome(curso.getNome());
-        presenca.setAlunoCurso(aluno.getNomeCurso());
+        // alunoCurso é obrigatório (NOT NULL); quando o aluno não tem curso
+        // acadêmico vinculado, usa o nome da viagem como contexto.
+        presenca.setAlunoCurso(aluno.getNomeCurso() != null ? aluno.getNomeCurso() : curso.getNome());
         presenca.setFaculdade(curso.getFaculdade());
     }
 
@@ -265,7 +306,7 @@ public class PresencaService {
         return "CRITICO";
     }
 
-    private java.util.Optional<Aluno> buscarAlunoPorProfileId(Long profileId) {
+    private java.util.Optional<Aluno> buscarAlunoPorProfileId(UUID profileId) {
         return alunoRepository.findByExternalId(profileId)
                 .or(() -> alunoRepository.findById(profileId));
     }
