@@ -42,6 +42,12 @@ public class Curso {
     @Column(name = "cidade", length = 255)
     private String cidade;
     
+    @Column(name = "destino_latitude")
+    private Double destinoLatitude;
+    
+    @Column(name = "destino_longitude")
+    private Double destinoLongitude;
+    
     @Column(name = "horario_partida")
     private LocalTime horarioPartida;
     

@@ -33,6 +33,10 @@ public class CursoDTO {
     
     private String cidade;
     
+    private Double destinoLatitude;
+    
+    private Double destinoLongitude;
+    
     private LocalTime horarioPartida;
     
     private LocalTime horarioRetorno;
