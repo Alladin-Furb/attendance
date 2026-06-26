@@ -45,6 +45,8 @@ public class CursoService {
         curso.setCampus(dto.getCampus());
         curso.setEnderecoDestino(dto.getEnderecoDestino());
         curso.setCidade(dto.getCidade());
+        curso.setDestinoLatitude(dto.getDestinoLatitude());
+        curso.setDestinoLongitude(dto.getDestinoLongitude());
         curso.setHorarioPartida(dto.getHorarioPartida());
         curso.setHorarioRetorno(dto.getHorarioRetorno());
         curso.setDataInicio(dto.getDataInicio());
@@ -138,6 +140,8 @@ public class CursoService {
         curso.setCampus(dto.getCampus());
         curso.setEnderecoDestino(dto.getEnderecoDestino());
         curso.setCidade(dto.getCidade());
+        curso.setDestinoLatitude(dto.getDestinoLatitude());
+        curso.setDestinoLongitude(dto.getDestinoLongitude());
         curso.setHorarioPartida(dto.getHorarioPartida());
         curso.setHorarioRetorno(dto.getHorarioRetorno());
         curso.setDataInicio(dto.getDataInicio());
@@ -172,6 +176,8 @@ public class CursoService {
                 .campus(curso.getCampus())
                 .enderecoDestino(curso.getEnderecoDestino())
                 .cidade(curso.getCidade())
+                .destinoLatitude(curso.getDestinoLatitude())
+                .destinoLongitude(curso.getDestinoLongitude())
                 .horarioPartida(curso.getHorarioPartida())
                 .horarioRetorno(curso.getHorarioRetorno())
                 .dataInicio(curso.getDataInicio())
